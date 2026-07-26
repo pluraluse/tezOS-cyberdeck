@@ -16,59 +16,95 @@
 | Section | Contents |
 |---|---|
 | Device Name | Free-text string (T9 entry). Shown in Messenger profile, Beacon pairing handshake, etc. |
-| Profiles | See below — PIN-protected personalization layers, NOT separate wallets. Add / Switch / Remove. |
+| Profiles | See below — PIN-protected, each mapping to a separate HD-derived account/address from one seed. Add / Switch / Remove. |
 | Lock / Passcode | Device-level PIN gating screen access. Independent of signing — signing is always gated by the physically separate signer's own button confirmation, regardless of profile or lock state. |
 | Wi-Fi | SSID scan/list, T9 PSK entry, saved-network list. |
 | Storage | microSD space management (this is the only storage tier on this hardware — Pi boots from and stores everything on the card). Total/free space, breakdown by category (Camera captures, Gallery cache, app data, logs), clear-cache action. |
 | Services | Network selection (Mainnet vs. Ghostnet/testnet) — needed for development and for anyone trying the device without risking real tez. RPC/TZKT endpoint override. IPFS pinning-service credentials. |
 | About / Reset | Firmware version, signer firmware version, factory reset. |
 
-## Profile architecture (the "users" decision)
+## Profile architecture (the "users" decision — revised)
 
-**One wallet, one tz address, one signer key — always.** Profiles do not
-create separate identities. A profile is a personalization/view-state layer:
+**One seed, multiple derived accounts — each profile is a genuinely
+separate address, not a skin on one shared address.** Corrected from an
+earlier version of this doc that had all profiles sharing one address —
+that doesn't work: it defeats the point of separate alts and undermines
+the discreet-switching design below, since anyone who ever saw one
+profile's balance would see all of them.
 
-- Favorited NFTs (Gallery)
-- Saved watch-addresses (Explorer)
-- Saved contract addresses (Scanner)
-- Read/unread state (Messenger)
-- Default Camera resolution/depth preset
-- Theme/sound/UI preferences
+- The signer generates **one seed** during initial device setup, backed up
+  as a single recovery phrase. It never leaves the signer.
+- Each profile/"bank" (0/1/2/3...) is a **child key derived from that seed
+  at a different account index** — HD (hierarchical deterministic)
+  derivation. Genuinely distinct keypair, genuinely distinct tz address,
+  genuinely separate on-chain balance and NFT holdings per profile.
+- **Curve note**: Tezos's default curve is ed25519 (tz1). Its HD derivation
+  standard (SLIP-0010) only supports *hardened* derivation — every path
+  segment needs a hardened index, unlike secp256k1's more flexible scheme.
+  Use a proper SLIP-0010 ed25519 derivation library, not a naive BIP32 port.
+- **Path convention — open decision**: match the derivation path Ledger/
+  Temple/Kukai already use (something like `m/44'/1729'/account'/0'` —
+  1729 is Tezos's registered coin type) if the same seed phrase should be
+  importable into other wallets, versus a custom path if recovery is meant
+  to stay within this device's own software. Not yet decided — pick this
+  before the signer's derivation logic is implemented, since it's harder
+  to change after seeds exist in the wild.
+- One local, per-profile personalization layer still exists on top (see
+  list below), it's just no longer the *only* thing that differs between
+  profiles:
+  - Favorited NFTs (Gallery)
+  - Saved watch-addresses (Explorer)
+  - Saved contract addresses (Scanner)
+  - Read/unread state (Messenger)
+  - Default Camera resolution/depth preset
+  - Theme/sound/UI preferences
 
-All profiles see the **same** underlying chain data (same balance, same
-owned tokens, same channels) since it's the same address. Profiles only
-differ in what's been personally saved/favorited/configured on top.
+**What the signer actually does**: holds the one seed, derives the
+requested account's keypair on demand, and never exposes the seed or other
+accounts' keys to the main board — the main board only ever receives the
+specific derived address (for display/queries) or signature (for that one
+account) it asked for.
 
-**Security note, worth keeping explicit in UI copy later**: the profile PIN
-gates access to the personalization layer only. It has no bearing on
-signing. Never present it in a way that implies it protects funds — that's
-the airgapped signer's job, via its own physical button confirmation,
-independent of which profile is active or whether the device is "unlocked."
+**Security note, worth keeping explicit in UI copy later**: selecting a
+profile now has a real functional role (it picks which account/address is
+active), but it still doesn't bypass signing security — every operation
+still requires the airgapped signer's own physical button confirmation,
+for whichever account is active. The profile PIN selects an identity; it
+never substitutes for that confirmation.
 
-**Implementation**: small local keyed storage per profile (not on-chain, not
-shared). Lock/idle screen = PIN-entry gate that loads the matching profile's
-saved state. Reasonable default cap on profile count (small-group/family
-scale, not open-ended).
+**Recovery consideration**: one seed phrase recovers every bank's keys.
+The PIN → account-index mapping itself is local device state, not
+on-chain — needs an explicit recovery flow (simplest: re-enter "this PIN
+is account index N" manually on a recovered/new device).
+
+**Implementation**: small local keyed storage per profile for the
+personalization layer (not on-chain, not shared). Lock/idle screen =
+PIN-entry gate that both selects the active account/address *and* loads
+the matching profile's saved personalization state. Reasonable default
+cap on profile count (small-group/family scale, not open-ended).
 
 ### Profile switching — discreet by design
 
 The lock/idle screen **never shows a profile picker/list**. It always just
 prompts for a PIN, blind. Whichever PIN matches determines which profile
-silently loads. This is deliberate: a visible list of profiles is itself an
-information leak — it tells an onlooker how many profiles exist and, from
-any labels/icons, likely which is the primary/admin one. With blind PIN
-entry, an onlooker sees someone type a PIN and get into "their device" —
-no visible branching, no hierarchy tells.
+(and now, which distinct address/account) silently loads. This matters
+more now than it did under the old shared-address model: a visible list
+would enumerate not just personalization profiles but genuinely separate
+accounts/addresses — a real information leak, not just a cosmetic one.
+With blind PIN entry, an onlooker sees someone type a PIN and get into
+"their device" — no visible branching, no hierarchy tells, no account
+enumeration.
 
 - Fast switching = re-enter PIN from idle/lock, not a menu-diving flow.
 - No profile names/labels ever surfaced during the switch flow itself
   (labels can exist internally in Settings for the owner's own reference,
   but never shown to an onlooker during the actual unlock).
 - **Not built by default, but worth knowing exists**: duress/decoy PINs
-  (a specific PIN that loads a deliberately unremarkable decoy profile) are
-  a real, heavier security pattern used in some devices. This is a bigger
-  feature with its own tradeoffs — revisit only if "discreet" ever needs to
-  become "safe under coercion" specifically, not part of v1 profile design.
+  (a specific PIN that loads a deliberately unremarkable decoy
+  profile/account) are a real, heavier security pattern used in some
+  devices. This is a bigger feature with its own tradeoffs — revisit only
+  if "discreet" ever needs to become "safe under coercion" specifically,
+  not part of v1 profile design.
 
 ## About screen — full device specifics
 
@@ -81,5 +117,5 @@ no visible branching, no hierarchy tells.
 - WiFi SSID, IP address
 - Signer link status (connected/disconnected)
 - Device uptime
-- Active wallet's tz1 address (fine to show here — this is the owner
-  viewing their own device, not an onlooker during a profile switch)
+- Active profile's derived tz1 address (fine to show here — this is the
+  owner viewing their own device, not an onlooker during a profile switch)
