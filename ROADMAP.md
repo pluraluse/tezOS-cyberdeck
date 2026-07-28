@@ -33,9 +33,18 @@ depends on it. Don't skip ahead.
 ## M5 — tezOS core skeleton
 - DRM init + evdev init + drawing primitives (blit rect, bitmap-font text)
   + input dispatch loop. The foundation everything else builds on.
-- **Dependency**: visual/interaction design system (palette, typography,
-  menu grammar, popups/alerts) must be defined before this milestone can
-  actually be finished — see `docs/design-system/` (not yet started).
+- **Status: core logic built and verified in software** — see
+  `docs/architecture/CORE-ARCHITECTURE.md` and `src/core/`. The render
+  API, screen/app/input state machine, shared list widget, dirty-rect
+  redraw strategy, real end-to-end PUSH/POP navigation, real body/small
+  fonts (MonoMEK, confirmed CC0), and a `draw_icon` primitive with a real
+  icon bitmap asset (MEK-Dings) are all implemented and proven working.
+  What's left for this milestone: the icon-to-app mapping (a design
+  decision — see `docs/design-system/ICONS.md`), MEKmode for the
+  display/header role (still Press Start 2P as placeholder), T9
+  text-entry widget, popups/alerts (layout/transitions), real DRM/evdev
+  platform-shim code, and every app's actual screen (currently all push
+  a generic placeholder stub).
 
 ## M6 — First real screen
 - Idle/home screen with T9 shortcut navigation. No network, no wallet, no
@@ -80,9 +89,12 @@ depends on it. Don't skip ahead.
   via camera (Scan mode).
 
 ## Open dependencies (block downstream work until resolved)
-- **tezOS visual/interaction design system** — palette, typography, menu
-  grammar, icons, popups/system messages/alerts, number/special-character
-  formatting. Blocks: M5 core skeleton, and by extension every app's UI.
+- **tezOS visual/interaction design system** — palette and typography
+  drafted (`docs/design-system/PALETTE.md`). Core render API, state
+  machine, and bitmap fonts are built and verified
+  (`docs/architecture/CORE-ARCHITECTURE.md`, `src/core/`). Still open:
+  popups/system messages/alerts (layout/transitions) and icon assets as
+  real bitmaps. Blocks: full app UIs, not the core loop itself anymore.
 - **Teia gating mechanism for a token-gated builders' channel** — Merkle
   allowlist maintenance flow (not live token-balance check) needs a
   concrete update-cadence design before Messenger's gated channel ships.

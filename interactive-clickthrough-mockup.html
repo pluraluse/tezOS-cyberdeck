@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>tezOS interactive clickthrough</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10143A; --bg-deep: #0A0D28; --primary: #0F61FF;
+    --pink: #FF3D8A; --cyan: #2FE6E6; --amber: #FFA53D;
+    --text: #E4EAFB; --muted: #8894C4; --line: #2A2F5A;
+  }
+  body { background: #333; font-family: sans-serif; margin: 0; padding: 30px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+  .device-frame { background: #1a1a1a; border-radius: 24px; padding: 20px 14px; }
+  .screen { width: 320px; height: 480px; background: var(--bg); position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  .status { display: flex; justify-content: space-between; padding: 8px 12px; font-family: 'VT323', monospace; font-size: 18px; color: var(--muted); border-bottom: 2px solid var(--primary); }
+  .app-header { font-family: 'Press Start 2P', monospace; font-size: 14px; color: var(--primary); padding: 10px 12px 8px; }
+  .content { flex: 1; padding: 0 12px; font-family: 'VT323', monospace; font-size: 19px; color: var(--text); overflow-y: auto; }
+  .softkeys { display: flex; justify-content: space-between; padding: 8px 12px; font-family: 'VT323', monospace; font-size: 18px; border-top: 2px solid var(--primary); background: var(--bg-deep); cursor: pointer; user-select: none; }
+  .softkeys .l { color: var(--cyan); } .softkeys .r { color: var(--pink); }
+  .softkeys span:hover { text-decoration: underline; }
+  .row { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .row.active { background: var(--primary); color: var(--bg); border-radius: 3px; }
+  .muted { color: var(--muted); } .pink { color: var(--pink); } .cyan { color: var(--cyan); } .amber { color: var(--amber); }
+  .clock-area { text-align: center; padding: 22px 0 6px; }
+  .clock { font-family: 'Press Start 2P', monospace; font-size: 32px; color: var(--text); }
+  .date { font-family: 'VT323', monospace; font-size: 18px; color: var(--muted); margin-top: 4px; }
+  .brand { text-align: center; margin-top: 10px; }
+  .logo-text { font-family: 'Press Start 2P', monospace; font-size: 13px; color: var(--primary); }
+  .ticker { margin-top: 14px; padding: 6px 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 15px; color: var(--pink); }
+  .nftgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  .nftthumb { aspect-ratio: 1; background: var(--line); border-radius: 3px; }
+  .nftthumb.sel { border: 2px solid var(--pink); }
+  .bubble { background: var(--line); border-radius: 6px; padding: 5px 10px; margin: 5px 0; max-width: 80%; }
+  .bubble.me { background: var(--primary); color: var(--bg); margin-left: auto; }
+  .viewfinder { background: #060818; height: 150px; margin-top: 6px; border: 1px solid var(--line); position: relative; }
+  .modebar { display: flex; gap: 5px; margin-top: 5px; font-size: 13px; flex-wrap: wrap; }
+  .modebar span { padding: 2px 6px; border: 1px solid var(--muted); border-radius: 2px; color: var(--muted); }
+  .modebar span.on { border-color: var(--cyan); color: var(--cyan); }
+  .canvas1bit { background: #000; height: 150px; margin-top: 6px; position: relative; }
+  .canvas1bit .px { position: absolute; background: var(--text); }
+  .help { max-width: 340px; color: #ddd; font-family: sans-serif; font-size: 14px; line-height: 1.6; }
+  .help h2 { color: #fff; font-size: 18px; }
+  .help kbd { background: #444; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+  .hint { position: absolute; top: 4px; right: 8px; font-size: 10px; color: var(--muted); font-family: sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="device-frame">
+  <div class="screen" id="screen" tabindex="0"></div>
+</div>
+
+<div class="help">
+  <h2>tezOS interactive clickthrough</h2>
+  <p>This is a browser mockup of the navigation flow — idle screen menu
+  through to every app's mockup screen and back. It mirrors the real
+  softkey/Up/Down navigation model (see <code>src/core/tezos_core.h</code>
+  for the actual C implementation this is modeled after), not the final
+  pixel-exact UI.</p>
+  <p><b>Controls:</b><br>
+  <kbd>↑</kbd> / <kbd>↓</kbd> — move selection<br>
+  <kbd>Enter</kbd> — select (left softkey)<br>
+  <kbd>Esc</kbd> — back (right softkey)<br>
+  Click works too — click a row to select it, click the softkey labels
+  at the bottom of the screen.</p>
+  <p>Click the screen once first so it can capture keyboard input.</p>
+</div>
+
+<script>
+const APPS = [
+  {id:'wallet', name:'Wallet'}, {id:'explorer', name:'Explorer'},
+  {id:'scanner', name:'Scanner'}, {id:'gallery', name:'Gallery'},
+  {id:'discover', name:'Discover'}, {id:'messenger', name:'Messenger'},
+  {id:'camera', name:'Camera'}, {id:'art', name:'1-bit Art'},
+  {id:'settings', name:'Settings'},
+];
+
+let state = { screen: 'idle', selected: 0 };
+
+function statusBar(right) {
+  return `<div class="status"><span>WiFi &#9679;&#9679;&#9679;</span><span>${right||''}</span></div>`;
+}
+function softkeys(l, r, lAction, rAction) {
+  return `<div class="softkeys"><span class="l" onclick="${lAction}">${l}</span><span class="r" onclick="${rAction}">${r}</span></div>`;
+}
+
+function renderIdle() {
+  let rows = APPS.map((a,i) => `
+    <div class="row ${i===state.selected?'active':''}" onclick="selectApp(${i})">
+      <span>${a.name}</span><span>&gt;</span>
+    </div>`).join('');
+  return `
+    ${statusBar('82%')}
+    <div class="clock-area">
+      <div class="clock">14:32</div>
+      <div class="date">SUN 26 JUL</div>
+    </div>
+    <div class="brand"><div class="logo-text">tezOS</div></div>
+    <div class="ticker">NEW ORIGINATION: KT1a9w...f3q2</div>
+    <div class="content">${rows}</div>
+    ${softkeys('SELECT', 'MENU', 'selectApp(state.selected)', '')}
+  `;
+}
+
+function appScreen(id) {
+  const back = `<div class="hint" style="position:static;"></div>`;
+  const content = {
+    wallet: `
+      <div style="text-align:center; margin: 12px 0;">
+        <div class="muted" style="font-size:14px;">BALANCE</div>
+        <div style="font-size:28px;">1,204.50 &#42793;</div>
+      </div>
+      <div class="row"><span>Send</span><span class="muted">&gt;</span></div>
+      <div class="row active"><span>Receive</span><span>&gt;</span></div>
+      <div class="row"><span>Delegate</span><span class="muted">baker.tz</span></div>
+      <div class="row"><span>alice.tez</span><span class="muted">Send</span></div>`,
+    explorer: `
+      <div class="row pink"><span>GRAVEYARD</span><span>142 found</span></div>
+      <div class="row active"><span>KT1a9w...f3q2</span><span>2.1y idle</span></div>
+      <div class="row"><span>KT1f0c...88ab</span><span>3.4y idle</span></div>
+      <div class="row"><span>KT1z71...c4e9</span><span>1.8y idle</span></div>
+      <div class="row muted"><span>Block 4,829,110</span><span>+14s</span></div>`,
+    scanner: `
+      <div class="muted" style="font-size:14px;">KT1a9w...f3q2</div>
+      <div class="row"><span>%default</span><span class="muted">unit</span></div>
+      <div class="row active"><span>%collect</span><span>nat</span></div>
+      <div class="row"><span>%transfer</span><span class="muted">pair</span></div>
+      <div style="margin-top:10px; border-top:1px solid var(--line); padding-top:8px;">
+        <div class="muted" style="font-size:14px;">token_id</div>
+        <div class="cyan" style="font-size:20px;">4021_</div>
+      </div>`,
+    gallery: `
+      <div class="nftgrid">
+        <div class="nftthumb sel"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+        <div class="nftthumb"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+        <div class="nftthumb"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+      </div>
+      <div class="pink" style="margin-top:10px;">&#9733; favorited &mdash; "night_bloom #4"</div>`,
+    discover: `
+      <div class="row active"><span>"static_field"</span><span>12 &#42793;</span></div>
+      <div class="row"><span>"low_orbit #2"</span><span>4.5 &#42793;</span></div>
+      <div class="row"><span>bootloader.art</span><span class="muted">browse</span></div>
+      <div class="row"><span>teia.art</span><span class="muted">browse</span></div>`,
+    messenger: `
+      <div class="muted" style="font-size:14px;">#cyberdeck-builders</div>
+      <div class="bubble">anyone got the piscreen overlay working?</div>
+      <div class="bubble me">yeah, pin table's in the build notes</div>
+      <div class="bubble">nice, testing tonight</div>`,
+    camera: `
+      <div class="viewfinder"></div>
+      <div class="modebar"><span class="on">1-BIT</span><span>GRAY</span><span>8-BIT</span><span>16-BIT</span></div>
+      <div class="modebar"><span class="on">4x4</span><span>8x8</span></div>
+      <div class="modebar"><span class="on">320x480</span><span>320x240</span><span>800x480</span><span>640x480</span></div>`,
+    art: `
+      <div class="canvas1bit">
+        <div class="px" style="top:20px;left:30px;width:70px;height:9px;"></div>
+        <div class="px" style="top:29px;left:30px;width:9px;height:45px;"></div>
+        <div class="px" style="top:29px;left:91px;width:9px;height:45px;"></div>
+        <div class="px" style="top:65px;left:55px;width:35px;height:9px;"></div>
+      </div>
+      <div class="muted" style="font-size:14px; margin-top:6px;">tool: pencil &middot; mint-ready</div>`,
+    settings: `
+      <div class="row"><span>Device name</span><span class="muted">&gt;</span></div>
+      <div class="row active"><span>Profiles</span><span>&gt;</span></div>
+      <div class="row"><span>Wi-Fi</span><span class="muted">&gt;</span></div>
+      <div class="row"><span>Storage</span><span class="muted">62%</span></div>
+      <div class="row"><span>Services</span><span class="cyan">Mainnet</span></div>
+      <div class="row"><span>About</span><span class="muted">&gt;</span></div>`,
+  }[id];
+
+  const appName = APPS.find(a => a.id === id).name;
+  return `
+    ${statusBar()}
+    <div class="app-header">${appName.toUpperCase()}</div>
+    <div class="content">${content}</div>
+    ${softkeys('SELECT', 'BACK', '', 'goBack()')}
+  `;
+}
+
+function render() {
+  const el = document.getElementById('screen');
+  el.innerHTML = state.screen === 'idle' ? renderIdle() : appScreen(state.screen);
+}
+
+function selectApp(i) {
+  state.selected = i;
+  state.screen = APPS[i].id;
+  render();
+}
+function goBack() {
+  state.screen = 'idle';
+  render();
+}
+
+document.getElementById('screen').addEventListener('keydown', (e) => {
+  if (state.screen === 'idle') {
+    if (e.key === 'ArrowDown') { state.selected = Math.min(APPS.length - 1, state.selected + 1); render(); }
+    else if (e.key === 'ArrowUp') { state.selected = Math.max(0, state.selected - 1); render(); }
+    else if (e.key === 'Enter') { selectApp(state.selected); }
+  } else {
+    if (e.key === 'Escape') { goBack(); }
+  }
+});
+
+render();
+</script>
+</body>
+</html>

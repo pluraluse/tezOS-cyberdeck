@@ -42,13 +42,15 @@ profile's balance would see all of them.
   standard (SLIP-0010) only supports *hardened* derivation — every path
   segment needs a hardened index, unlike secp256k1's more flexible scheme.
   Use a proper SLIP-0010 ed25519 derivation library, not a naive BIP32 port.
-- **Path convention — open decision**: match the derivation path Ledger/
-  Temple/Kukai already use (something like `m/44'/1729'/account'/0'` —
-  1729 is Tezos's registered coin type) if the same seed phrase should be
-  importable into other wallets, versus a custom path if recovery is meant
-  to stay within this device's own software. Not yet decided — pick this
-  before the signer's derivation logic is implemented, since it's harder
-  to change after seeds exist in the wild.
+- **Path convention — decided: `44'/1729'/account'/0'`, fully hardened.**
+  This is the standard Tezos BIP44-style path (1729 is Tezos's registered
+  SLIP-44 coin type), used by `tezos-client`, Taquito, and Ledger's own
+  Tezos app. All segments are hardened because ed25519/SLIP-10 doesn't
+  support non-hardened derivation. Using this exact convention means the
+  same seed phrase this device generates is recoverable in Ledger, Temple,
+  Kukai, or any other standard Tezos wallet — non-negotiable, per project
+  direction, since losing that compatibility would mean losing an
+  independent recovery path if the device itself is ever lost or broken.
 - One local, per-profile personalization layer still exists on top (see
   list below), it's just no longer the *only* thing that differs between
   profiles:
