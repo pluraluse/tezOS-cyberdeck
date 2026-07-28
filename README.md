@@ -5,9 +5,12 @@ contract-entrypoint scanner, and NFT/social client, built around a custom
 framebuffer-native window manager (tezOS) running on commodity Linux SBC
 hardware, with an airgapped signer as the actual trust boundary.
 
-**Status: pre-hardware-bringup.** Software architecture, app scope, and
-hardware pin budget are decided (see `docs/`); no code or PCB work has
-started yet.
+**Status: core software built and verified in software; hardware bring-up
+not yet started.** The render API, screen/app/input state machine, and
+four `tezOS default` bitmap fonts are implemented and proven working (see
+`docs/architecture/CORE-ARCHITECTURE.md`). Real DRM/evdev wiring to actual
+Pi Zero 2 W hardware, popups/alerts design, and icon assets are still
+open — see `ROADMAP.md`.
 
 ## Mission
 
@@ -48,7 +51,10 @@ These came up during planning and were decided against, at least for now
 different way by someone who wasn't in that conversation. None of these
 are permanent; if something changes, revisit and update this list.
 
-- **Open app store** — considered, went with a curated repo instead.
+- **Open app store** — considered, went with a curated repo instead. This
+  is about avoiding OEM/carrier-style forced, undeletable bundled apps
+  tied to sales agreements — not a cap on how many good apps the suite
+  can have.
 - **General-purpose phone OS** — tezOS is scoped to this device's app set,
   not a daily-driver phone replacement.
 - **Full DeFi platform** — one minimal swap feature is the current
@@ -76,9 +82,13 @@ tezos-cyberdeck/
 │
 ├── docs/
 │   ├── build-notes/             — per-app/subsystem decision logs (see its own index)
-│   ├── architecture/            — platform-shim interface, signer protocol spec (TBD)
-│   ├── design-system/           — tezOS visual/interaction design system (NOT YET DEFINED —
-│   │                               see Open Dependencies in ROADMAP.md)
+│   ├── architecture/            — CORE-ARCHITECTURE.md (render API, state machine,
+│   │                               memory model — built and verified); signer protocol
+│   │                               spec still TBD
+│   ├── design-system/           — palette + typography (PALETTE.md), ICONS.md,
+│   │                               static mockups, interactive-clickthrough-mockup.html
+│   │                               (idle menu → all 9 app screens → back, clickable);
+│   │                               popups still open (see ROADMAP.md)
 │   ├── FUNDING-STRATEGY.md      — grants, audit credibility, platform onboarding sequencing
 │   └── GOVERNANCE-TRANSITION.md — path and timing toward community DAO governance
 │
@@ -92,7 +102,12 @@ tezos-cyberdeck/
 │   └── signer/                    — bare-metal C signer firmware (TBD)
 │
 ├── src/
-│   ├── core/                       — DRM/evdev init, drawing primitives, input dispatch loop (TBD)
+│   ├── core/                       — tezOS render API, shared list widget, screen/app/
+│   │                                 input state machine, and 4 bitmap fonts. Built and
+│   │                                 verified — real end-to-end push/pop navigation
+│   │                                 proven working (see
+│   │                                 docs/architecture/CORE-ARCHITECTURE.md).
+│   │                                 Not yet wired to real DRM/evdev hardware.
 │   ├── shim-linux/            — Linux framebuffer/evdev/socket/storage platform shim (TBD)
 │   └── apps/
 │       ├── wallet/               — send/receive/sign, delegation, domain resolution
@@ -105,7 +120,9 @@ tezos-cyberdeck/
 │       ├── art1bit/                — 1-bit drawing app
 │       └── settings/             — device settings, profiles, About (see build-notes)
 │
-├── tools/                            — dev-loop tooling (SDL framebuffer emulator, etc., TBD)
+├── tools/                            — rasterize_font.py (font-to-bitmap conversion,
+│                                       used for the 4 tezOS default fonts); dev-loop
+│                                       SDL framebuffer emulator still TBD
 └── scripts/                        — build/flash scripts (TBD)
 ```
 

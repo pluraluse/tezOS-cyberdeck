@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>tezOS app suite mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10143A;
+    --bg-deep: #0A0D28;
+    --primary: #0F61FF;
+    --pink: #FF3D8A;
+    --cyan: #2FE6E6;
+    --amber: #FFA53D;
+    --text: #E4EAFB;
+    --muted: #8894C4;
+    --line: #2A2F5A;
+  }
+  body {
+    background: #333;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 40px 20px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 28px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .cell { text-align: center; }
+  .label {
+    color: #ddd;
+    font-family: sans-serif;
+    font-size: 13px;
+    margin-top: 10px;
+    letter-spacing: 0.5px;
+  }
+  .device-frame {
+    background: #1a1a1a;
+    border-radius: 18px;
+    padding: 14px 10px;
+    display: inline-block;
+  }
+  .screen {
+    width: 200px;
+    height: 300px;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .status {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 8px;
+    font-family: 'VT323', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--primary);
+  }
+  .app-header {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--primary);
+    padding: 8px 8px 6px;
+  }
+  .content { flex: 1; padding: 0 8px; font-family: 'VT323', monospace; font-size: 15px; color: var(--text); overflow: hidden; }
+  .softkeys {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 8px;
+    font-family: 'VT323', monospace;
+    font-size: 13px;
+    border-top: 1px solid var(--primary);
+    background: var(--bg-deep);
+  }
+  .softkeys .l { color: var(--cyan); }
+  .softkeys .r { color: var(--pink); }
+
+  /* shared row styles */
+  .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--line); }
+  .row.active { background: var(--primary); color: var(--bg); padding: 3px 6px; margin: 0 -6px; }
+  .muted { color: var(--muted); }
+  .pink { color: var(--pink); }
+  .cyan { color: var(--cyan); }
+  .amber { color: var(--amber); }
+
+  /* icons - chunky flat-color shapes, MSN/ICQ-era style */
+  .icon { width: 22px; height: 22px; border-radius: 4px; display: inline-block; vertical-align: middle; margin-right: 6px; position: relative; }
+  .icon.wallet { background: var(--amber); }
+  .icon.wallet::after { content: ""; position: absolute; top: 6px; left: 3px; width: 16px; height: 10px; background: var(--bg); border-radius: 2px; }
+  .icon.explorer { background: var(--cyan); border-radius: 50%; }
+  .icon.explorer::after { content: ""; position: absolute; top: 4px; left: 4px; width: 14px; height: 14px; border: 2px solid var(--bg); border-radius: 50%; background: none; }
+  .icon.scanner { background: var(--pink); }
+  .icon.scanner::after { content: "+"; position: absolute; top: 1px; left: 5px; color: var(--bg); font-size: 16px; font-weight: bold; }
+  .icon.gallery { background: var(--primary); }
+  .icon.gallery::after { content: ""; position: absolute; top: 5px; left: 3px; width: 16px; height: 12px; background: var(--bg); }
+  .icon.discover { background: var(--cyan); }
+  .icon.discover::after { content: ""; position: absolute; top: 3px; left: 3px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 14px solid var(--bg); }
+  .icon.messenger { background: var(--amber); border-radius: 4px 4px 4px 0; }
+  .icon.messenger::after { content: ""; position: absolute; top: 5px; left: 4px; width: 14px; height: 10px; background: var(--bg); border-radius: 3px; }
+  .icon.camera { background: var(--pink); }
+  .icon.camera::after { content: ""; position: absolute; top: 7px; left: 6px; width: 10px; height: 10px; background: var(--bg); border-radius: 50%; }
+  .icon.art { background: var(--primary); }
+  .icon.art::after { content: ""; position: absolute; top: 4px; left: 9px; width: 4px; height: 14px; background: var(--bg); transform: rotate(30deg); }
+  .icon.settings { background: var(--muted); }
+  .icon.settings::after { content: ""; position: absolute; top: 6px; left: 6px; width: 10px; height: 10px; background: var(--bg); border-radius: 50%; box-shadow: -7px 0 0 -3px var(--bg), 7px 0 0 -3px var(--bg); }
+
+  .nftgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 6px; }
+  .nftthumb { aspect-ratio: 1; background: var(--line); border-radius: 2px; }
+  .nftthumb.sel { border: 2px solid var(--pink); }
+
+  .bubble { background: var(--line); border-radius: 6px; padding: 4px 8px; margin: 4px 0; max-width: 80%; }
+  .bubble.me { background: var(--primary); color: var(--bg); margin-left: auto; }
+
+  .viewfinder { background: #060818; height: 105px; margin-top: 4px; border: 1px solid var(--line); position: relative; }
+  .viewfinder .grain { position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 4px); }
+  .modebar { display: flex; gap: 4px; margin-top: 4px; font-size: 12px; }
+  .modebar span { padding: 2px 5px; border: 1px solid var(--muted); border-radius: 2px; color: var(--muted); }
+  .modebar span.on { border-color: var(--cyan); color: var(--cyan); }
+
+  .canvas1bit { background: #000; height: 130px; margin-top: 4px; position: relative; }
+  .canvas1bit .px { position: absolute; background: var(--text); }
+</style>
+</head>
+<body>
+<div class="grid">
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span class="cyan">tz1boK...9pQ2</span></div>
+      <div class="app-header">WALLET</div>
+      <div class="content">
+        <div style="text-align:center; margin: 10px 0;">
+          <div class="muted" style="font-size:13px;">BALANCE</div>
+          <div style="font-size:26px; color:var(--text);">1,204.50 ꜩ</div>
+        </div>
+        <div class="row"><span><span class="icon wallet"></span>Send</span><span class="muted">&gt;</span></div>
+        <div class="row active"><span>Receive</span><span>&gt;</span></div>
+        <div class="row"><span>Delegate</span><span class="muted">baker.tz</span></div>
+        <div class="row"><span>alice.tez</span><span class="muted">Send</span></div>
+      </div>
+      <div class="softkeys"><span class="l">SELECT</span><span class="r">MENU</span></div>
+    </div></div>
+    <div class="label">Wallet</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>Mainnet</span></div>
+      <div class="app-header">EXPLORER</div>
+      <div class="content">
+        <div class="row pink"><span>GRAVEYARD</span><span>142 found</span></div>
+        <div class="row active"><span>KT1a9w...f3q2</span><span>2.1y idle</span></div>
+        <div class="row"><span>KT1f0c...88ab</span><span>3.4y idle</span></div>
+        <div class="row"><span>KT1z71...c4e9</span><span>1.8y idle</span></div>
+        <div class="row muted"><span>Block 4,829,110</span><span>+14s</span></div>
+      </div>
+      <div class="softkeys"><span class="l">OPEN</span><span class="r">MENU</span></div>
+    </div></div>
+    <div class="label">Explorer — Graveyard mode</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>Scanner</span></div>
+      <div class="app-header">SCANNER</div>
+      <div class="content">
+        <div class="muted" style="font-size:12px;">KT1a9w...f3q2</div>
+        <div class="row"><span>%default</span><span class="muted">unit</span></div>
+        <div class="row active"><span>%collect</span><span>nat</span></div>
+        <div class="row"><span>%transfer</span><span class="muted">pair</span></div>
+        <div style="margin-top:8px; border-top:1px solid var(--line); padding-top:6px;">
+          <div class="muted" style="font-size:12px;">token_id</div>
+          <div class="cyan" style="font-size:18px;">4021_</div>
+        </div>
+      </div>
+      <div class="softkeys"><span class="l">FILL</span><span class="r">FORGE</span></div>
+    </div></div>
+    <div class="label">Scanner — entrypoint call</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>12 owned</span></div>
+      <div class="app-header">GALLERY</div>
+      <div class="content">
+        <div class="nftgrid">
+          <div class="nftthumb sel"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+          <div class="nftthumb"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+          <div class="nftthumb"></div><div class="nftthumb"></div><div class="nftthumb"></div>
+        </div>
+        <div class="pink" style="margin-top:8px; font-size:13px;">★ favorited — "night_bloom #4"</div>
+      </div>
+      <div class="softkeys"><span class="l">VIEW</span><span class="r">MENU</span></div>
+    </div></div>
+    <div class="label">Gallery</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>objkt</span></div>
+      <div class="app-header">DISCOVER</div>
+      <div class="content">
+        <div class="row active"><span>"static_field"</span><span>12 ꜩ</span></div>
+        <div class="row"><span>"low_orbit #2"</span><span>4.5 ꜩ</span></div>
+        <div class="row"><span>bootloader.art</span><span class="muted">browse</span></div>
+        <div class="row"><span>teia.art</span><span class="muted">browse</span></div>
+      </div>
+      <div class="softkeys"><span class="l">COLLECT</span><span class="r">MENU</span></div>
+    </div></div>
+    <div class="label">Discover</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>2 unread</span></div>
+      <div class="app-header">MESSENGER</div>
+      <div class="content">
+        <div class="muted" style="font-size:12px;">#cyberdeck-builders</div>
+        <div class="bubble">anyone got the piscreen overlay working?</div>
+        <div class="bubble me">yeah, pin table's in the build notes</div>
+        <div class="bubble">nice, testing tonight</div>
+      </div>
+      <div class="softkeys"><span class="l">REPLY</span><span class="r">CHANNELS</span></div>
+    </div></div>
+    <div class="label">Messenger — Teia Channels</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>CAPTURE</span></div>
+      <div class="app-header">CAMERA</div>
+      <div class="content">
+        <div class="viewfinder">
+          <div class="grain"></div>
+          <svg viewBox="0 0 200 105" width="200" height="105" style="position:absolute; inset:0;">
+            <defs>
+              <pattern id="dither" width="3" height="3" patternUnits="userSpaceOnUse">
+                <rect width="3" height="3" fill="none"/>
+                <circle cx="1" cy="1" r="0.6" fill="#E4EAFB" opacity="0.5"/>
+              </pattern>
+            </defs>
+            <!-- generic, non-identifying placeholder figure: head + shoulders silhouette -->
+            <ellipse cx="100" cy="40" rx="22" ry="25" fill="url(#dither)"/>
+            <path d="M60 103 Q60 63 100 63 Q140 63 140 103 Z" fill="url(#dither)"/>
+          </svg>
+        </div>
+
+        <div class="modebar">
+          <span class="on">1-BIT</span><span>GRAY</span><span>8-BIT</span><span>16-BIT</span>
+        </div>
+        <div class="modebar" style="margin-top:3px;">
+          <span class="on">4x4</span><span>8x8</span><span class="muted" style="border:none; padding:2px 0;">dither</span>
+        </div>
+        <div class="modebar" style="margin-top:3px; flex-wrap:wrap; gap:3px;">
+          <span class="on" style="font-size:10px; padding:2px 4px;">320x480</span><span style="font-size:10px; padding:2px 4px;">320x240</span><span style="font-size:10px; padding:2px 4px;">800x480</span><span style="font-size:10px; padding:2px 4px;">640x480</span>
+        </div>
+        <div class="muted" style="font-size:11px; margin-top:2px;">fit: full · no scroll</div>
+      </div>
+      <div class="softkeys"><span class="l">MODE</span><span class="r">SHOOT</span></div>
+    </div></div>
+    <div class="label">Camera — Capture mode</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>1-BIT ART</span></div>
+      <div class="app-header">ART</div>
+      <div class="content">
+        <div class="canvas1bit">
+          <div class="px" style="top:20px;left:30px;width:60px;height:8px;"></div>
+          <div class="px" style="top:28px;left:30px;width:8px;height:40px;"></div>
+          <div class="px" style="top:28px;left:82px;width:8px;height:40px;"></div>
+          <div class="px" style="top:60px;left:50px;width:30px;height:8px;"></div>
+        </div>
+        <div class="muted" style="font-size:12px; margin-top:4px;">tool: pencil · mint-ready</div>
+      </div>
+      <div class="softkeys"><span class="l">TOOL</span><span class="r">SAVE</span></div>
+    </div></div>
+    <div class="label">1-bit Art</div>
+  </div>
+
+  <div class="cell">
+    <div class="device-frame"><div class="screen">
+      <div class="status"><span>WiFi ●●●</span><span>82%</span></div>
+      <div class="app-header">SETTINGS</div>
+      <div class="content">
+        <div class="row"><span><span class="icon settings"></span>Device name</span><span class="muted">&gt;</span></div>
+        <div class="row active"><span>Profiles</span><span>&gt;</span></div>
+        <div class="row"><span>Wi-Fi</span><span class="muted">&gt;</span></div>
+        <div class="row"><span>Storage</span><span class="muted">62%</span></div>
+        <div class="row"><span>Services</span><span class="cyan">Mainnet</span></div>
+        <div class="row"><span>About</span><span class="muted">&gt;</span></div>
+      </div>
+      <div class="softkeys"><span class="l">SELECT</span><span class="r">BACK</span></div>
+    </div></div>
+    <div class="label">Settings</div>
+  </div>
+
+</div>
+</body>
+</html>

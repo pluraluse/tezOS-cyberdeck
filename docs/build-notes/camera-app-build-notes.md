@@ -38,10 +38,18 @@ worth keeping scroll logic single-axis where possible.
 
 | Mode              | Method                                                        |
 |-------------------|----------------------------------------------------------------|
-| 1-bit dithered    | Ordered Bayer dither (4x4 or 8x8 matrix) — Game Boy Camera look |
+| 1-bit dithered    | Ordered Bayer dither (**user-selectable 4x4 or 8x8 matrix**) — Game Boy Camera look |
 | 8-bit grayscale   | Weighted luminance conversion, smooth gradient, **no dither**   |
-| 8-bit color       | 3-3-2 RGB bit truncation (256 colors) + Bayer dither for intermediate tones |
+| 8-bit color       | 3-3-2 RGB bit truncation (256 colors) + Bayer dither (**user-selectable 4x4 or 8x8 matrix**) for intermediate tones |
 | 16-bit color      | Native RGB565 passthrough — matches display's native depth, no quantization needed |
+
+**Dither matrix size — user-selectable, not fixed**: 4x4 gives a coarser,
+more visibly "chunky pixel" pattern (closer to the original Game Boy
+Camera look); 8x8 gives finer gradation with less visible patterning,
+closer to a smooth photo. Only relevant to the two modes that actually
+dither (1-bit, 8-bit color) — grayscale has no dither step and 16-bit is
+a native passthrough, so this toggle should be hidden/disabled in those
+two modes rather than shown as a dead control.
 
 ### Pipeline (single path, no intermediate steps)
 
