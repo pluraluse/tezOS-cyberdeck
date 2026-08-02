@@ -26,26 +26,20 @@ backlight behavior varies.
 
 ## Typography
 
-**Update: MonoMEK and MEK-Dings are in use.** MonoMEK (confirmed CC0,
-licensed directly by creator Michael Alexander / MEK.txt) has replaced
-VT323 as the real body/small font — rasterized at 16px and 20px in
-`src/core/fonts/tezos_mekmono_16.h` / `_20.h`, wired into
-`TEZOS_FONT_SMALL` / `TEZOS_FONT_BODY`, and verified rendering correctly
-through the real pipeline. MEK-Dings turned out to be a dingbat/icon font
-(pictogram per codepoint, not letters) — rasterized at 24px as the real
-icon source (`tezos_mekdings_24.h`, `TEZOS_ICON_FONT`); see `ICONS.md` for
-the specimen sheet and mapping task. MEKmode is still a candidate for the
-display/header role (currently Press Start 2P) — "workaround in
-progress" per project owner, not yet obtained.
+**Update: all four text-font roles now use MonoMEK** (confirmed CC0,
+Michael Alexander/MEK.txt) — Header, Hero, Body, and Small are all
+MonoMEK at 16px/32px/20px/16px respectively. Press Start 2P has been
+fully retired as a placeholder. MEK-Dings is the icon set (24px,
+dingbat/pictogram font — see `ICONS.md`). MEKmode remains a candidate to
+take over the Header/Hero roles specifically if obtained later — swap by
+re-running `tools/rasterize_font.py` against it and updating
+`src/core/tezos_fonts.c`'s two constants, same pattern already used
+throughout that file.
 
-Two-font system, since a single font can't cover both "vintage vibe" and
-"readable at small sizes":
-- **Display/headers**: a chunky 8-bit pixel font (currently Press Start
-  2P; MEKmode is the candidate replacement, pending a workaround) — used
-  sparingly, for the idle screen's clock/branding and section headers
-  only. Illegible at small sizes, so never use it for body text.
-- **Body/menu/lists**: **MonoMEK**, confirmed and in use — for menu
-  items, numbers, and anything a user needs to actually read quickly.
+One font, four sizes, since a single point size can't cover both
+"vintage vibe at a glance" and "readable at small sizes" — larger sizes
+(32px hero clock, 16px headers) read as more "display," smaller sizes
+(20px body, 16px small labels) stay legible for dense content.
 
 ## Open items
 

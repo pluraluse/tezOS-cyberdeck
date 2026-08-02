@@ -52,3 +52,27 @@ typedef struct {
 } tezos_stub_state_t;
 
 tezos_screen_t *tezos_stub_screen_get(const char *app_name);
+
+/* --- Paged view: Up/Down flips between whole pages, not scrolling
+   within one. For apps organized as distinct sections (Wallet's
+   Balances/Transactions/Contacts/Domain/Staking/Info) rather than one
+   long scrolling screen. Down = next page, Up = previous page, clamped
+   at both ends (not wraparound — going past the last page back to the
+   first is disorienting without a stronger "this wrapped" cue than a
+   page-number indicator gives). --- */
+typedef struct {
+    int current_page;
+    int page_count;
+} tezos_paged_view_state_t;
+
+void tezos_paged_view_init(tezos_paged_view_state_t *pv, int page_count);
+
+/* Returns true if the page changed (i.e. redraw needed) — same
+   true/false-means-redraw convention as tezos_list_handle_input. */
+bool tezos_paged_view_handle_input(tezos_paged_view_state_t *pv, tezos_input_event_t ev);
+
+/* Draws a small "N/M" page indicator — call this from a page's own
+   render function at whatever position makes sense for that screen's
+   layout (typically top-right, near the status bar). */
+void tezos_paged_view_draw_indicator(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y,
+                                     const tezos_font_t *font, const tezos_paged_view_state_t *pv);

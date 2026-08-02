@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 FIRST_CHAR = 32   # space
 LAST_CHAR = 126   # ~
 
-def rasterize(ttf_path, px_size, ident, out_path):
+def rasterize(ttf_path, px_size, ident, out_path, json_out_path=None):
     font = ImageFont.truetype(ttf_path, px_size)
 
     glyphs = []
@@ -77,6 +77,27 @@ def rasterize(ttf_path, px_size, ident, out_path):
 
     print(f"{ident}: {LAST_CHAR - FIRST_CHAR + 1} glyphs, {total_bytes} bytes of bitmap data -> {out_path}")
 
+    if json_out_path:
+        import json, base64
+        json_glyphs = {}
+        for g in glyphs:
+            json_glyphs[g["code"]] = {
+                "w": g["w"], "h": g["h"], "xoff": g["xoff"], "yoff": g["yoff"],
+                "advance": g["advance"],
+                # base64-pack the raw alpha bytes — same data as the C array,
+                # just compact enough to inline in a browser-side JS file
+                # instead of a JSON number array (which bloats ~3-4x larger).
+                "px": base64.b64encode(bytes(g["pixels"])).decode("ascii") if g["pixels"] else ""
+            }
+        out_json = {
+            "name": ident, "pixelSize": px_size, "lineHeight": int(px_size * 1.25),
+            "firstChar": FIRST_CHAR, "lastChar": LAST_CHAR, "glyphs": json_glyphs
+        }
+        with open(json_out_path, "w") as jf:
+            json.dump(out_json, jf)
+        print(f"  also wrote JS-consumable JSON -> {json_out_path}")
+
 if __name__ == "__main__":
     ttf, px, ident, out = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
-    rasterize(ttf, px, ident, out)
+    json_out = sys.argv[5] if len(sys.argv) > 5 else None
+    rasterize(ttf, px, ident, out, json_out)
