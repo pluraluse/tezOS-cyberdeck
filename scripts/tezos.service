@@ -1,0 +1,20 @@
+[Unit]
+Description=tezOS window manager
+# Start once the display/input device tree overlays are attached, not
+# just "after basic boot" — starting before the DRM/evdev nodes exist
+# would just fail on a race, and systemd would retry into a confusing
+# loop rather than a clean single failure.
+After=dev-dri-card0.device
+Wants=dev-dri-card0.device
+
+[Service]
+ExecStart=/opt/tezos/tezos_shim
+Restart=on-failure
+RestartSec=2
+# No login prompt, no desktop session — tezOS IS the shell. See
+# ROADMAP.md M4 and docs/architecture/CORE-ARCHITECTURE.md.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

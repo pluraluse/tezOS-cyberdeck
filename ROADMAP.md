@@ -14,21 +14,45 @@ depends on it. Don't skip ahead.
   deprecated in kernel 5.4+). See `docs/build-notes/hardware-roadmap-build-notes.md`.
 - Confirm 2x13 header pin conflict resolved for breadboard phase (jumpers
   now, wire harness later — no stacking header needed long-term).
+- **Status: shim code written and compiles clean against real libdrm
+  headers** (`src/shim-linux/linux_shim.c`) — DRM mode-setting, dumb
+  buffer creation at RGB565 (matching `tezos_fb_t`'s native format),
+  mmap, and dirty-rect-aware flip via `drmModeDirtyFB`. **Not yet
+  runtime-verified** — no real DRM device exists outside actual Pi
+  hardware. First real-hardware task: confirm the panel driver actually
+  accepts RGB565 dumb buffers (noted as a real open question in the
+  shim's comments — some tinydrm-class drivers only support XRGB8888).
 
 ## M2 — Input working
 - TCA8418 keypad decoder wired over I2C: numeric matrix + 2 softkeys +
   dedicated Up/Down buttons, all through one interrupt line.
 - XPT2046 touch confirmed working via mainline `ads7846`-compatible driver.
+- **Status: confirmed mainline Linux has a real TCA8418 driver**
+  (`drivers/input/keyboard/tca8418_keypad.c`, kernel 4.11+) — the keypad
+  shows up as standard evdev once the device-tree overlay is loaded, no
+  custom I2C code needed. See `hardware/pinouts/tca8418-overlay-notes.md`
+  for the binding and the keycode mapping the shim expects. Touch (XPT2046)
+  reading is stubbed in the shim but not yet implemented — keypad-first,
+  per the project's stated input priority.
 
 ## M3 — "Hello framebuffer"
 - Minimal `libdrm` test program: open device, set mode, paint a test pattern.
 - Separate minimal evdev reader logging raw key/touch events.
 - Two standalone programs, each proving one half of the physical loop,
   before any OS logic exists.
+- **Superseded by M1/M5's combined work** — `src/shim-linux/linux_shim.c`
+  does both of these directly against the real core engine rather than
+  as two separate throwaway test programs, since the core engine already
+  existed and was proven by the time this milestone was reached.
 
 ## M4 — Boot-to-kiosk
 - Pi boots straight into a systemd service running the test binary — no
   login prompt, no desktop session. tezOS *is* the shell from day one.
+- **Status: systemd unit and install script written**
+  (`scripts/tezos.service`, `scripts/install-tezos-service.sh`) — waits
+  on the DRM device node explicitly rather than a generic boot-complete
+  target, restarts on failure. Not yet tested on real hardware (depends
+  on M1/M2 being verified first).
 
 ## M5 — tezOS core skeleton
 - DRM init + evdev init + drawing primitives (blit rect, bitmap-font text)
@@ -40,8 +64,9 @@ depends on it. Don't skip ahead.
   fonts (MonoMEK, confirmed CC0), and a `draw_icon` primitive with a real
   icon bitmap asset (MEK-Dings) are all implemented and proven working.
   What's left for this milestone: the icon-to-app mapping (a design
-  decision — see `docs/design-system/ICONS.md`), MEKmode for the
-  display/header role (still Press Start 2P as placeholder), T9
+  decision — see `docs/design-system/ICONS.md`), MEKmode as an optional
+  future swap for the display/header role (MonoMEK covers all roles fine
+  for now — this is polish, not a gap), T9
   text-entry widget, popups/alerts (layout/transitions), real DRM/evdev
   platform-shim code, and every app's actual screen (currently all push
   a generic placeholder stub).
@@ -64,6 +89,16 @@ depends on it. Don't skip ahead.
   tokens via TZKT), Settings (profiles, WiFi, storage, About), Camera
   (capture + scan modes).
 - Wallet gains: delegation/staking, `.tez` domain resolution in Send.
+- **Status: Wallet's home + Send-confirm screens are real** (`src/apps/wallet/`),
+  backed by a genuinely implemented and rigorously verified operation
+  forging + signing layer (`src/chain/` — see
+  `docs/build-notes/wallet-app-build-notes.md`). Forging and signing are
+  verified byte-for-byte against Taquito's own reference test vectors,
+  not just "doesn't crash." Still placeholder: balance display, branch/
+  counter (need a network layer), recipient/amount entry (needs the
+  T9 widget), broadcast (needs a network layer), and any entrypoint-call
+  support in forging (plain tez transfers only so far). Explorer,
+  Scanner, Gallery, Settings, Camera still push the generic stub screen.
 
 ## M10 — Messenger
 - Teia Channels V2 client (contract `KT19ooSLPFxJQ5mx3kR4Qo2UY4KJDcdMdng9`):
@@ -95,6 +130,11 @@ depends on it. Don't skip ahead.
   (`docs/architecture/CORE-ARCHITECTURE.md`, `src/core/`). Still open:
   popups/system messages/alerts (layout/transitions) and icon assets as
   real bitmaps. Blocks: full app UIs, not the core loop itself anymore.
-- **Teia gating mechanism for a token-gated builders' channel** — Merkle
-  allowlist maintenance flow (not live token-balance check) needs a
-  concrete update-cadence design before Messenger's gated channel ships.
+- **Teia gating mechanism for a token-gated builders' channel** —
+  resolved architecturally: Token Gated Chat (`token_gate.py`, per
+  `docs/build-notes/messenger-app-build-notes.md`) gates by live FA2
+  balance automatically, no Merkle-allowlist maintenance needed. Still
+  open: confirming whether Token Gated Chat is actually deployed
+  anywhere, and verifying the live Channels contract's real
+  entrypoints/storage against the (unmerged, single-author) PR this
+  understanding is based on.

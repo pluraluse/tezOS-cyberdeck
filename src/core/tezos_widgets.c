@@ -1,6 +1,7 @@
 #include "tezos_widgets.h"
 #include "tezos_fonts.h"
 #include <string.h>
+#include <stdio.h>
 
 void tezos_list_init(tezos_list_state_t *list, const tezos_list_item_t *items, int item_count) {
     list->items = items;
@@ -116,4 +117,30 @@ tezos_screen_t *tezos_stub_screen_get(const char *app_name) {
         .debug_name = "stub",
     };
     return &g_stub_screens[idx];
+}
+
+/* --- Paged view --- */
+
+void tezos_paged_view_init(tezos_paged_view_state_t *pv, int page_count) {
+    pv->current_page = 0;
+    pv->page_count = page_count;
+}
+
+bool tezos_paged_view_handle_input(tezos_paged_view_state_t *pv, tezos_input_event_t ev) {
+    if (ev.type == TEZOS_INPUT_DOWN && pv->current_page < pv->page_count - 1) {
+        pv->current_page++;
+        return true;
+    }
+    if (ev.type == TEZOS_INPUT_UP && pv->current_page > 0) {
+        pv->current_page--;
+        return true;
+    }
+    return false;
+}
+
+void tezos_paged_view_draw_indicator(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y,
+                                     const tezos_font_t *font, const tezos_paged_view_state_t *pv) {
+    char buf[16];
+    snprintf(buf, sizeof buf, "%d/%d", pv->current_page + 1, pv->page_count);
+    tezos_draw_text(fb, d, x, y, buf, font, TEZOS_MUTED);
 }

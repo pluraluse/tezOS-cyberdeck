@@ -6,7 +6,9 @@ build-notes file is created, so the full decision trail stays navigable.
 | Doc | Covers |
 |---|---|
 | [camera-app-build-notes.md](./camera-app-build-notes.md) | Camera app: Scan mode vs. Capture mode, resolution presets, color-depth modes, box-average downsample pipeline, minting integration |
+| [wallet-app-build-notes.md](./wallet-app-build-notes.md) | Real operation forging + signing (base58, zarith, tag bytes, watermark/blake2b/ed25519), all verified against Taquito reference vectors byte-for-byte; what's real vs. still placeholder |
 | [settings-app-build-notes.md](./settings-app-build-notes.md) | Input model (softkeys + up/down), Settings app scope, profile architecture, discreet profile switching, About screen contents |
+| [messenger-app-build-notes.md](./messenger-app-build-notes.md) | Teia messaging contracts: Channels, Token Gated Chat (solves builders'-channel gating), Poll/Token Comments — sourced from both the live frontend and an unmerged upstream PR, with the discrepancy between them flagged |
 | [hardware-roadmap-build-notes.md](./hardware-roadmap-build-notes.md) | Stage 1 custom carrier board (Zero 2 W) vs. Stage 2 Compute Module migration (CM4 vs CM5), decision status |
 
 ## Conventions for future build-notes files

@@ -5,12 +5,16 @@ contract-entrypoint scanner, and NFT/social client, built around a custom
 framebuffer-native window manager (tezOS) running on commodity Linux SBC
 hardware, with an airgapped signer as the actual trust boundary.
 
-**Status: core software built and verified in software; hardware bring-up
-not yet started.** The render API, screen/app/input state machine, and
-four `tezOS default` bitmap fonts are implemented and proven working (see
-`docs/architecture/CORE-ARCHITECTURE.md`). Real DRM/evdev wiring to actual
-Pi Zero 2 W hardware, popups/alerts design, and icon assets are still
-open — see `ROADMAP.md`.
+**Status: core software and a real operation forging/signing backend
+built and verified; hardware bring-up not yet started.** The render API,
+screen/app/input state machine, and four `tezOS default` bitmap fonts are
+implemented and proven working (see `docs/architecture/CORE-ARCHITECTURE.md`).
+Operation forging and signing (`src/chain/`) are genuinely implemented
+and verified byte-for-byte against Taquito's own reference test vectors,
+and Wallet's home + Send-confirm screens (`src/apps/wallet/`) exercise
+that pipeline for real (see `docs/build-notes/wallet-app-build-notes.md`).
+Real DRM/evdev wiring to actual Pi Zero 2 W hardware, a network layer,
+popups/alerts design, and icon assets are still open — see `ROADMAP.md`.
 
 ## Mission
 
@@ -87,7 +91,10 @@ tezos-cyberdeck/
 │   │                               spec still TBD
 │   ├── design-system/           — palette + typography (PALETTE.md), ICONS.md,
 │   │                               static mockups, interactive-clickthrough-mockup.html
-│   │                               (idle menu → all 9 app screens → back, clickable);
+│   │                               (idle menu → all 9 app screens → back; renders every
+│   │                               character — static labels and the scrolling list alike —
+│   │                               from the real rasterized MonoMEK/Press Start 2P glyph
+│   │                               data via canvas, no web fonts, works fully offline);
 │   │                               popups still open (see ROADMAP.md)
 │   ├── FUNDING-STRATEGY.md      — grants, audit credibility, platform onboarding sequencing
 │   └── GOVERNANCE-TRANSITION.md — path and timing toward community DAO governance
@@ -96,7 +103,8 @@ tezos-cyberdeck/
 │   ├── carrier-board/           — Stage 1 custom carrier PCB for Pi Zero 2 W (KiCad, TBD)
 │   ├── enclosure/                — 3D-print files (TBD)
 │   ├── signer/                    — signer board hardware reference (STM32F401 / Pi Pico, TBD)
-│   └── pinouts/                    — GPIO maps, wiring diagrams
+│   └── pinouts/                    — GPIO maps, wiring diagrams; tca8418-overlay-notes.md
+│                                       (device-tree binding + keymap the shim expects)
 │
 ├── firmware/
 │   └── signer/                    — bare-metal C signer firmware (TBD)
@@ -108,9 +116,18 @@ tezos-cyberdeck/
 │   │                                 proven working (see
 │   │                                 docs/architecture/CORE-ARCHITECTURE.md).
 │   │                                 Not yet wired to real DRM/evdev hardware.
-│   ├── shim-linux/            — Linux framebuffer/evdev/socket/storage platform shim (TBD)
+│   ├── shim-linux/            — linux_shim.c: real DRM/KMS + evdev platform shim.
+│   │                             Compiles and links clean against real libdrm headers
+│   │                             (verified in dev sandbox); fails gracefully with no
+│   │                             real /dev/dri device (expected outside real Pi
+│   │                             hardware). Not yet runtime-verified — see ROADMAP.md M1.
+│   ├── chain/                     — tezos_base58, tezos_forge, tezos_signer: real operation
+│   │                                 forging/signing, verified byte-for-byte against Taquito
+│   │                                 reference vectors (see wallet-app-build-notes.md)
 │   └── apps/
-│       ├── wallet/               — send/receive/sign, delegation, domain resolution
+│       ├── wallet/               — REAL: home + Send-confirm screens, genuinely forge
+│       │                            + sign a transaction via src/chain/ (mock signer —
+│       │                            see wallet-app-build-notes.md for what's still placeholder)
 │       ├── explorer/            — block/contract/operation browsing, "Graveyard" mode
 │       ├── scanner/             — generic entrypoint decode/fill/forge
 │       ├── gallery/              — owned-token viewer
@@ -123,7 +140,8 @@ tezos-cyberdeck/
 ├── tools/                            — rasterize_font.py (font-to-bitmap conversion,
 │                                       used for the 4 tezOS default fonts); dev-loop
 │                                       SDL framebuffer emulator still TBD
-└── scripts/                        — build/flash scripts (TBD)
+└── scripts/                        — tezos.service (boot-to-kiosk systemd unit),
+                                        install-tezos-service.sh (build + install, run on the Pi)
 ```
 
 Directories marked **TBD** are placeholders — they exist now so the project
