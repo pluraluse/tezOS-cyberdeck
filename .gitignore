@@ -1,0 +1,12 @@
+*.o
+*.a
+*.so
+*.bin
+*.elf
+build/
+build-*/
+node_modules/
+dist/
+*.ppm
+*.png
+.ppm
