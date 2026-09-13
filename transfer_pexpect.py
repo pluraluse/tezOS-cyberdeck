@@ -1,86 +1,62 @@
 #!/usr/bin/env python3
-import pexpect
-import base64
-import sys
-import os
+import pexpect, base64, os, subprocess, sys
 
-SERIAL_DEVICE = '/dev/ttyACM0'
-BAUD = 115200
-LOCAL_FILE = '/home/qwen/projects/tezos-cyberdeck/src/shim-linux/tezos_shim_arm64'
-REMOTE_B64 = '/tmp/tezos_shim.b64'
-REMOTE_BIN = '/tmp/tezos_shim'
-CHUNK_SIZE = 1000
-TIMEOUT = 30
+SERIAL = "/dev/ttyACM1"
+LF = "/home/qwen/projects/tezos-cyberdeck/src/shim-linux/tezos_shim_arm64"
+RB = "/tmp/tezos_shim.b64"
+RX = "/tmp/tezos_shim"
+cs = 1000
+t = 30
 
-def die(msg):
-    print("FAILED: " + msg, file=sys.stderr)
-    sys.exit(1)
+ls = os.path.getsize(LF)
+print("Local:", ls)
 
-local_size = os.path.getsize(LOCAL_FILE)
-print("Local file: " + LOCAL_FILE + " (" + str(local_size) + " bytes)")
+with open(LF, "rb") as f:
+    b64 = base64.b64encode(f.read()).decode("ascii")
+tc = (len(b64) + cs - 1) // cs
+print("Chunks:", tc)
 
-with open(LOCAL_FILE, 'rb') as f:
-    b64_data = base64.b64encode(f.read()).decode('ascii')
-total_chunks = (len(b64_data) + CHUNK_SIZE - 1) // CHUNK_SIZE
-print("Base64-encoded: " + str(len(b64_data)) + " chars, " + str(total_chunks) + " chunks")
+fd = os.open(SERIAL, os.O_RDWR | os.O_NOCTTY)
+subprocess.run(["stty", "-F", SERIAL, "115200", "raw", "-echo"])
 
-child = pexpect.spawn('screen ' + SERIAL_DEVICE + ' ' + str(BAUD), timeout=TIMEOUT)
+child = pexpect.fdpexpect.fdspawn(fd, timeout=t)
 child.logfile = sys.stdout.buffer
 
-try:
-    child.sendline('')
-    idx = child.expect(['login:', pexpect.TIMEOUT], timeout=TIMEOUT)
-    if idx == 1:
-        die("timed out waiting for login prompt")
+child.sendline("")
+i = child.expect(["login:", pexpect.TIMEOUT], timeout=t)
+if i == 1: sys.exit("NO_LOGIN")
 
-    child.sendline('pi')
-    idx = child.expect(['Password:', pexpect.TIMEOUT], timeout=TIMEOUT)
-    if idx == 1:
-        die("timed out waiting for password prompt")
+child.sendline("pi")
+i = child.expect(["Password:", pexpect.TIMEOUT], timeout=t)
+if i == 1: sys.exit("NO_PASS")
 
-    child.sendline('raspberry')
-    idx = child.expect([r'\$\s*$', pexpect.TIMEOUT], timeout=TIMEOUT)
-    if idx == 1:
-        die("timed out waiting for shell prompt after login -- wrong password or login failed")
+child.sendline("raspberry")
+i = child.expect([r"\$ ", pexpect.TIMEOUT], timeout=t)
+if i == 1: sys.exit("NO_SHELL")
 
-    print("Logged in. Starting transfer...")
+print("LOGGED IN")
+child.sendline("rm -f " + RB)
+child.expect(r"\$ ", timeout=t)
 
-    child.sendline('rm -f ' + REMOTE_B64)
-    child.expect(r'\$\s*$', timeout=TIMEOUT)
+for i in range(0, len(b64), cs):
+    chunk = b64[i:i+cs]
+    child.sendline("echo -n " + repr(chunk) + " >> " + RB)
+    j = child.expect([r"\$ ", pexpect.TIMEOUT], timeout=t)
+    if j == 1: sys.exit("TIMEOUT " + str(i//cs+1))
+    if (i//cs+1) % 50 == 0: print(" ", i//cs+1, "/", tc)
 
-    for i in range(0, len(b64_data), CHUNK_SIZE):
-        chunk = b64_data[i:i+CHUNK_SIZE]
-        chunk_num = i // CHUNK_SIZE + 1
-        child.sendline("echo -n '" + chunk + "' >> " + REMOTE_B64)
-        idx = child.expect([r'\$\s*$', pexpect.TIMEOUT], timeout=TIMEOUT)
-        if idx == 1:
-            die("timed out on chunk " + str(chunk_num) + "/" + str(total_chunks))
-        if chunk_num % 50 == 0:
-            print("  " + str(chunk_num) + "/" + str(total_chunks) + " chunks sent")
+print("Decoding...")
+child.sendline("base64 -d " + RB + " > " + RX + " && chmod +x " + RX)
+child.expect(r"\$ ", timeout=t)
 
-    print("All chunks sent. Decoding on the Pi...")
-    child.sendline('base64 -d ' + REMOTE_B64 + ' > ' + REMOTE_BIN + ' && chmod +x ' + REMOTE_BIN)
-    idx = child.expect([r'\$\s*$', pexpect.TIMEOUT], timeout=TIMEOUT)
-    if idx == 1:
-        die("timed out waiting for base64 decode to complete")
+child.sendline("stat -c %s " + RX)
+child.expect(r"\$ ", timeout=t)
+o = child.before.decode("utf-8", errors="replace")
+sizes = [l.strip() for l in o.splitlines() if l.strip().isdigit()]
+rs = int(sizes[-1]) if sizes else 0
 
-    child.sendline('stat -c %s ' + REMOTE_BIN)
-    idx = child.expect([r'\$\s*$', pexpect.TIMEOUT], timeout=TIMEOUT)
-    if idx == 1:
-        die("timed out waiting for remote file size check")
+if rs == ls: print("SUCCESS:", rs)
+else: print("MISMATCH:", ls, "vs", rs)
 
-    output = child.before.decode('utf-8', errors='replace')
-    print("Remote stat output: " + str(output))
-
-    remote_size_str = [line.strip() for line in output.splitlines() if line.strip().isdigit()]
-    if not remote_size_str:
-        die("could not parse remote file size from output: " + repr(output))
-    remote_size = int(remote_size_str[-1])
-
-    if remote_size == local_size:
-        print("SUCCESS: remote file size (" + str(remote_size) + ") matches local (" + str(local_size) + ") exactly.")
-    else:
-        die("SIZE MISMATCH: local=" + str(local_size) + " bytes, remote=" + str(remote_size) + " bytes")
-
-finally:
-    child.close()
+child.close()
+print("DONE")
