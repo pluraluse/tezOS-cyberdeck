@@ -53,16 +53,9 @@ like real, professional infrastructure, not a novelty.
 3. **Community buildable, deliberately not maximalist** — curated app
    repo, not an open app store. Commodity, sourceable hardware with a
    documented BOM, so cost is an addressable engineering problem, not
-   something "solved" by asset price movements (see
-   `docs/FUNDING-STRATEGY.md`).
+   something "solved" by asset price movements.
 4. **Legitimacy, not novelty** — open-source everything, get the signer
-   independently audited, then pursue grant funding on the strength of a
-   working device, in that order.
-5. **Community governance, eventually — not by default** — single/small-
-   team ownership through initial build and grant execution, moving
-   toward a multisig and possible DAO only once there's a real treasury
-   and real independent contributors to govern for (see
-   `docs/GOVERNANCE-TRANSITION.md`).
+   independently audited.
 
 ## Scope decisions already made
 
@@ -83,8 +76,7 @@ are permanent; if something changes, revisit and update this list.
 - **Multi-chain hardware wallet ambitions** — scope is Tezos signing,
   done well and audited, not competing with Ledger/Trezor's broader coverage.
 - **Solving affordability through token price** — the actual levers are
-  grants, fiat/stablecoin pricing, and BOM cost reduction (see
-  `docs/FUNDING-STRATEGY.md`).
+  fiat/stablecoin pricing and BOM cost reduction.
 - **Phone/Android hardware support** — considered (ESP32 and Android
   shims both came up), dropped in favor of Linux SBCs only for now — see
   `docs/build-notes/hardware-roadmap-build-notes.md`.
@@ -112,8 +104,6 @@ tezos-cyberdeck/
 │   │                               from the real rasterized MonoMEK/Press Start 2P glyph
 │   │                               data via canvas, no web fonts, works fully offline);
 │   │                               popups still open (see ROADMAP.md)
-│   ├── FUNDING-STRATEGY.md      — grants, audit credibility, platform onboarding sequencing
-│   └── GOVERNANCE-TRANSITION.md — path and timing toward community DAO governance
 │
 ├── hardware/
 │   ├── carrier-board/           — Stage 1 custom carrier PCB for Pi Zero 2 W (KiCad, TBD)
@@ -332,9 +322,7 @@ has one settled shape to build into, not because anything's inside yet.
 2. `BOM.md` — what to buy, and what's need/want/nice-to-have.
 3. `docs/build-notes/README-build-notes-index.md` — every concrete decision
    made so far, and why.
-4. `docs/FUNDING-STRATEGY.md` and `docs/GOVERNANCE-TRANSITION.md` — the
-   legitimacy, funding, and eventual community-governance path.
-5. `COMPILE-AND-TEST-PLAN.md` — hand this to anyone (human or agent) who
+4. `COMPILE-AND-TEST-PLAN.md` — hand this to anyone (human or agent) who
    needs to build and verify this project in a plain Debian dev
    environment before touching real hardware. Independently reproduced
    once already (`21 passed, 0 failed`, clean `-O2` build of the real

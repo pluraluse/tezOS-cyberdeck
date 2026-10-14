@@ -10,3 +10,4 @@ dist/
 tests/*.ppm
 .ppm
 tezos_shim
+AGENTS.md
