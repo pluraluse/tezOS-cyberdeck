@@ -3,12 +3,10 @@
 *.so
 *.bin
 *.elf
-build/
-build-*/
+/build/
+/build-*/
 node_modules/
 dist/
-*.ppm
-*.png
-*.log
+tests/*.ppm
 .ppm
 tezos_shim
