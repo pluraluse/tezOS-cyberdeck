@@ -1,0 +1,17 @@
+#!/bin/bash
+if [ "$1" = "device" ] && [ "$2" = "wifi" ] && [ "$3" = "connect" ]; then
+    if [ "$4" = "GoodNetwork" ] && [ "$6" = "correctpassword" ]; then
+        echo "Device 'wlan0' successfully activated"
+        exit 0
+    else
+        echo "Error: Connection activation failed" >&2
+        exit 1
+    fi
+fi
+if [ "$1" = "-t" ] && [ "$4" = "device" ] && [ "$5" = "wifi" ] && [ "$6" = "list" ]; then
+    echo "HomeNetwork:87:WPA2"
+    echo "OfficeGuest:45:--"
+    printf '%s\n' "Joe's Wifi\\: Guest:60:WPA2"
+    exit 0
+fi
+exit 1

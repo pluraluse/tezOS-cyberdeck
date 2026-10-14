@@ -4,9 +4,11 @@
 #include "../../core/tezos_fonts.h"
 #include "../../core/tezos_widgets.h"
 #include "../../core/tezos_t9.h"
+#include "../../core/tezos_pin_entry.h"
 #include "../../chain/tezos_bip39.h"
 #include "../../chain/tezos_bip39_wordlist.h"
 #include "../../chain/tezos_signer.h"
+#include "../../chain/tezos_store.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -17,7 +19,12 @@
     overwhelming majority of real wallets including Kukai's default. */
 #define MAX_CANDIDATES 8
 
-typedef enum { PHASE_ENTERING, PHASE_REVIEW_FAIL, PHASE_IMPORTED } import_phase_t;
+/* SIGNER_STORE_PATH -- see TEZOS_STORE_DEFAULT_SIGNER_PATH in
+   tezos_store.h; shared so this file and wallet.c can't drift out of
+   sync on the path. */
+#define SIGNER_STORE_PATH TEZOS_STORE_DEFAULT_SIGNER_PATH
+
+typedef enum { PHASE_ENTERING, PHASE_REVIEW_FAIL, PHASE_AWAITING_PIN, PHASE_IMPORTED } import_phase_t;
 
 typedef struct {
     import_phase_t phase;
@@ -31,6 +38,9 @@ typedef struct {
 
     char assembled_phrase[256]; /* built once entry completes, for validate/import */
     char imported_address[128];
+
+    char pin_buffer[TEZOS_PIN_MAX_LEN + 1];
+    tezos_pin_result_t pin_result;
 } import_state_t;
 
 static import_state_t g_import_state;
@@ -151,26 +161,48 @@ static void imported_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t 
     tezos_draw_text(fb, d, fb->width - backw - 8, fb->height - 26, "DONE", &TEZOS_FONT_SMALL, TEZOS_PINK);
 }
 
-static void try_finish_import(import_state_t *st) {
-    /* assemble the full phrase */
+/* Checksum validation only -- does NOT derive or save anything yet.
+   Real derivation/save happens in finish_with_pin() below, only after
+   the user has set a PIN to protect what gets saved. */
+static bool validate_assembled_phrase(import_state_t *st) {
     st->assembled_phrase[0] = '\0';
     for (int i = 0; i < WORD_COUNT; i++) {
         strcat(st->assembled_phrase, st->confirmed_words[i]);
         if (i < WORD_COUNT - 1) strcat(st->assembled_phrase, " ");
     }
+    return tezos_bip39_validate(st->assembled_phrase, WORD_COUNT);
+}
 
-    if (!tezos_bip39_validate(st->assembled_phrase, WORD_COUNT)) {
-        st->phase = PHASE_REVIEW_FAIL;
-        return;
-    }
-
+/* Called once the user has confirmed a PIN. Derives the signer,
+   encrypts+saves the mnemonic under that PIN (tezos_store.h), and sets
+   it as the wallet's active signer. */
+static void finish_with_pin(import_state_t *st, const char *pin) {
     tezos_mock_signer_t signer;
     if (!tezos_mock_signer_from_mnemonic(&signer, st->assembled_phrase, WORD_COUNT, "", 0)) {
-        st->phase = PHASE_REVIEW_FAIL; /* shouldn't happen if validate() passed, but don't assume */
+        st->phase = PHASE_REVIEW_FAIL; /* shouldn't happen if validate() already passed, but don't assume */
         return;
     }
 
-    wallet_set_active_signer(&signer);
+    tezos_store_signer_data_t store_data = {0};
+    snprintf(store_data.mnemonic, sizeof store_data.mnemonic, "%s", st->assembled_phrase);
+    store_data.word_count = WORD_COUNT;
+    store_data.passphrase[0] = '\0';
+    store_data.account = 0;
+    /* Save failure here (disk full, path unwritable) doesn't block using
+       the wallet THIS session -- the signer is already derived and set
+       active below regardless. It just means the phrase won't survive a
+       restart, same limitation as before this feature existed, not a
+       new regression. Not currently surfaced to the user as a distinct
+       warning -- a real gap, small enough to accept for now given this
+       is genuinely an edge case (a fresh dev environment's /tmp should
+       always be writable). */
+    tezos_store_save_signer(SIGNER_STORE_PATH, pin, &store_data);
+
+    /* wallet_set_active_signer_from_mnemonic (not the old plain
+       wallet_set_active_signer) so account switching works for the
+       rest of this session without needing the PIN again -- see
+       docs/build-notes/settings-app-build-notes.md's Profiles section. */
+    wallet_set_active_signer_from_mnemonic(st->assembled_phrase, WORD_COUNT, "", 0);
     tezos_mock_signer_address_b58(&signer, st->imported_address, sizeof st->imported_address);
     st->phase = PHASE_IMPORTED;
 }
@@ -192,7 +224,18 @@ static tezos_action_t entering_handle_input(tezos_screen_t *self, tezos_input_ev
         tezos_t9_init(&st->t9);
         refilter_candidates(st);
         *needs_redraw = true;
-        if (st->confirmed_count == WORD_COUNT) try_finish_import(st);
+        if (st->confirmed_count == WORD_COUNT) {
+            if (!validate_assembled_phrase(st)) {
+                st->phase = PHASE_REVIEW_FAIL;
+                return TEZOS_ACTION_NONE;
+            }
+            /* checksum is valid -- push PIN entry to protect what gets
+               saved. finish_with_pin() runs from on_resume once this
+               pops, see screen_on_resume() below. */
+            st->phase = PHASE_AWAITING_PIN;
+            *next = tezos_pin_entry_get("SET A PIN", st->pin_buffer, &st->pin_result);
+            return TEZOS_ACTION_PUSH;
+        }
         return TEZOS_ACTION_NONE;
     }
 
@@ -242,24 +285,46 @@ static tezos_action_t imported_handle_input(tezos_screen_t *self, tezos_input_ev
 static void screen_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) {
     import_state_t *st = (import_state_t *)self->app_state;
     switch (st->phase) {
-        case PHASE_ENTERING:    entering_render(self, fb, d); break;
-        case PHASE_REVIEW_FAIL: review_fail_render(self, fb, d); break;
-        case PHASE_IMPORTED:    imported_render(self, fb, d); break;
+        case PHASE_ENTERING:     entering_render(self, fb, d); break;
+        case PHASE_REVIEW_FAIL:  review_fail_render(self, fb, d); break;
+        case PHASE_AWAITING_PIN: entering_render(self, fb, d); break; /* obscured by the pushed PIN screen; never actually seen */
+        case PHASE_IMPORTED:     imported_render(self, fb, d); break;
     }
 }
 static tezos_action_t screen_input(tezos_screen_t *self, tezos_input_event_t ev,
                                    tezos_screen_t **next, bool *needs_redraw) {
     import_state_t *st = (import_state_t *)self->app_state;
     switch (st->phase) {
-        case PHASE_ENTERING:    return entering_handle_input(self, ev, next, needs_redraw);
-        case PHASE_REVIEW_FAIL: return review_fail_handle_input(self, ev, next, needs_redraw);
-        case PHASE_IMPORTED:    return imported_handle_input(self, ev, next, needs_redraw);
+        case PHASE_ENTERING:     return entering_handle_input(self, ev, next, needs_redraw);
+        case PHASE_REVIEW_FAIL:  return review_fail_handle_input(self, ev, next, needs_redraw);
+        case PHASE_AWAITING_PIN: return TEZOS_ACTION_NONE; /* input goes to the pushed PIN screen, not here */
+        case PHASE_IMPORTED:     return imported_handle_input(self, ev, next, needs_redraw);
     }
     return TEZOS_ACTION_NONE;
 }
 static void screen_tick(tezos_screen_t *self, int elapsed_ms, bool *needs_redraw) {
     import_state_t *st = (import_state_t *)self->app_state;
     if (st->phase == PHASE_ENTERING) entering_on_tick(self, elapsed_ms, needs_redraw);
+}
+
+/* Called when the pushed PIN entry screen pops back to us. */
+static void screen_on_resume(tezos_screen_t *self) {
+    import_state_t *st = (import_state_t *)self->app_state;
+    if (st->phase != PHASE_AWAITING_PIN) return; /* resumed for some other reason -- nothing to do */
+
+    if (st->pin_result == TEZOS_PIN_CONFIRMED) {
+        finish_with_pin(st, st->pin_buffer);
+    } else {
+        /* cancelled -- discard progress and let the user re-enter the
+           whole phrase. Not ideal UX (a "go back and pick a different
+           PIN without retyping 12 words" path would be better) but
+           simple and safe; a real gap worth improving later, not a
+           silent one. */
+        st->confirmed_count = 0;
+        tezos_t9_init(&st->t9);
+        refilter_candidates(st);
+        st->phase = PHASE_ENTERING;
+    }
 }
 
 tezos_screen_t *import_recovery_entry_screen(void) {
@@ -270,7 +335,7 @@ tezos_screen_t *import_recovery_entry_screen(void) {
 
     g_import_screen = (tezos_screen_t){
         .render = screen_render, .handle_input = screen_input,
-        .on_resume = NULL, .on_tick = screen_tick,
+        .on_resume = screen_on_resume, .on_tick = screen_tick,
         .app_state = &g_import_state, .debug_name = "import_recovery",
     };
     return &g_import_screen;

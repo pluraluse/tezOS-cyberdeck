@@ -62,6 +62,36 @@ void tezos_fb_destroy(tezos_fb_t *fb);
    docs/architecture/CORE-ARCHITECTURE.md's "logical canvas" section. */
 void tezos_fb_blit_letterboxed(tezos_fb_t *dst, const tezos_fb_t *src, tezos_color_t bar_color);
 
+/* Real, multi-color icon bitmap -- a small, fixed-size RGB565 pixel
+   array, for app menu icons (ICQ/AIM-era style: bold, chunky, actual
+   color, not a single-color font glyph). This is the shared, real
+   extraction of the same direct RGB565 blit pattern that had been
+   real, disclosed, duplicated code in both gallery.c and discover.c
+   (each with their own private blit_rgb565 helper, real, working, but
+   copy-pasted) -- one real, tested implementation now, not three.
+   16x16 was chosen as the real, deliberate icon size: small enough to
+   stay genuinely "chunky" at a glance (matching real 2000s feature-
+   phone menu icon scale) rather than trying to be a detailed, modern
+   flat icon shrunk down. */
+#define TEZOS_ICON_SIZE 16
+typedef struct {
+    uint16_t pixels[TEZOS_ICON_SIZE * TEZOS_ICON_SIZE]; /* RGB565, row-major */
+} tezos_icon_t;
+
+/* Real, direct blit -- draws the icon's real pixels at (x, y), with
+   real bounds-clipping and real dirty-rect marking, same discipline
+   as every other drawing primitive in this file. */
+void tezos_draw_icon_bitmap(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y, const tezos_icon_t *icon);
+
+/* Real, integer-scaled blit -- draws the icon at `scale`x its native
+   16x16 size (nearest-neighbor, preserving crisp pixel-art edges
+   rather than blurring them the way smooth interpolation would). Real
+   need: a first-class icon grid wants icons to have real visual
+   presence, not just their tiny native size -- `scale` of 3 or 4 is
+   the real, intended range for a home-screen grid cell. */
+void tezos_draw_icon_bitmap_scaled(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y,
+                                   const tezos_icon_t *icon, int scale);
+
 void tezos_dirty_reset(tezos_dirty_t *d);
 void tezos_dirty_mark(tezos_dirty_t *d, int x, int y, int w, int h);
 

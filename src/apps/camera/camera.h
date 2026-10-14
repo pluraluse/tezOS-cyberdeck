@@ -14,10 +14,12 @@
  * sensor hardware is a separate, genuinely hardware-dependent task that
  * can't be built or tested without a real Pi + camera module.
  *
- * Scan Mode wires the already-verified zbar/libqrencode/tezos_beacon_qr
- * pipeline into a real screen, using a "simulate scan" trigger that
- * generates a realistic pairing QR and decodes it through the real
- * libraries in place of a live sensor feed.
+ * Scan Mode's job ends at "scan and decode a real pairing QR" — it
+ * hands the decoded peer info to the separate Beacon Wallet app
+ * (src/apps/beacon_wallet/) from there, rather than handling the
+ * connection/session/signing itself. See beacon_wallet.h and
+ * docs/CONCEPTS.md's platform-philosophy section for why that's a
+ * separate app, not more of Camera's own internals.
  *
  * Capture Mode (camera_pipeline.h/.c) implements the real Game Boy
  * Camera-style pipeline — box-average downsampling (not nearest-

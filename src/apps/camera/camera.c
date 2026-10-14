@@ -4,6 +4,8 @@
 #include "../../core/tezos_fonts.h"
 #include "../../core/tezos_widgets.h"
 #include "../../chain/tezos_beacon_qr.h"
+#include "../../chain/tezos_beacon_pair.h"
+#include "../beacon_wallet/beacon_wallet.h"
 #include <qrencode.h>
 #include <zbar.h>
 #include <string.h>
@@ -74,6 +76,7 @@ typedef struct {
 static scan_screen_state_t g_scan_state;
 static tezos_screen_t g_scan_screen;
 
+
 static unsigned char *render_qr_to_grayscale(QRcode *qr, int scale, int *out_w, int *out_h) {
     int quiet = 4 * scale;
     int img_size = qr->width * scale + quiet * 2;
@@ -94,8 +97,10 @@ static unsigned char *render_qr_to_grayscale(QRcode *qr, int scale, int *out_w, 
 
 static bool simulate_scan(tezos_beacon_peer_info_t *out, char *err_out, size_t err_cap) {
     tezos_beacon_peer_info_t sample = {0};
-    strcpy(sample.id, "kukai-pairing-session");
-    strcpy(sample.name, "Kukai");
+    strcpy(sample.id, "example-dapp-pairing-session"); /* generic placeholder --
+        deliberately not naming any specific real wallet/dApp, see
+        docs/build-notes/beacon-wallet-app-build-notes.md's naming section */
+    strcpy(sample.name, "Example dApp");
     strcpy(sample.public_key, "7775e38359f7e8c66332edf78a0d1e7630191e909f695393bfab40e3f723dedf");
     strcpy(sample.version, "3");
     strcpy(sample.relay_server, "matrix.papers.tech");
@@ -170,6 +175,10 @@ static void scan_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) 
                 snprintf(pkpreview, sizeof pkpreview, "%.16s...", st->peer.public_key);
                 tezos_draw_text(fb, d, 8, y, pkpreview, &TEZOS_FONT_SMALL, TEZOS_MUTED);
             }
+            y += 24;
+            tezos_draw_text(fb, d, 8, y, "CONNECT to hand off to", &TEZOS_FONT_SMALL, TEZOS_MUTED);
+            y += 16;
+            tezos_draw_text(fb, d, 8, y, "Beacon Wallet for this dApp", &TEZOS_FONT_SMALL, TEZOS_MUTED);
             break;
         case SCAN_FAILED:
             tezos_draw_text(fb, d, 8, y, "SCAN FAILED", &TEZOS_FONT_BODY, TEZOS_PINK);
@@ -179,7 +188,8 @@ static void scan_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) 
     }
 
     tezos_draw_rect(fb, d, 0, fb->height - 34, fb->width, 2, TEZOS_PRIMARY);
-    tezos_draw_text(fb, d, 8, fb->height - 26, "SELECT", &TEZOS_FONT_SMALL, TEZOS_CYAN);
+    const char *left_label = st->state == SCAN_SUCCESS ? "CONNECT" : "SELECT";
+    tezos_draw_text(fb, d, 8, fb->height - 26, left_label, &TEZOS_FONT_SMALL, TEZOS_CYAN);
     int backw = tezos_text_width("BACK", &TEZOS_FONT_SMALL);
     tezos_draw_text(fb, d, fb->width - backw - 8, fb->height - 26, "BACK", &TEZOS_FONT_SMALL, TEZOS_PINK);
 }
@@ -187,14 +197,30 @@ static void scan_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) 
 static tezos_action_t scan_input(tezos_screen_t *self, tezos_input_event_t ev,
                                  tezos_screen_t **next, bool *needs_redraw) {
     scan_screen_state_t *st = (scan_screen_state_t *)self->app_state;
-    (void)next;
+
+    if (st->state == SCAN_IDLE || st->state == SCAN_FAILED) {
+        if (ev.type == TEZOS_INPUT_SOFTKEY_R) return TEZOS_ACTION_POP;
+        if (ev.type == TEZOS_INPUT_SOFTKEY_L) {
+            memset(&st->peer, 0, sizeof st->peer);
+            st->error_msg[0] = '\0';
+            bool ok = simulate_scan(&st->peer, st->error_msg, sizeof st->error_msg);
+            st->state = ok ? SCAN_SUCCESS : SCAN_FAILED;
+            *needs_redraw = true;
+        }
+        return TEZOS_ACTION_NONE;
+    }
+
+    /* SCAN_SUCCESS -- Camera's real job ends here: it scanned and
+       decoded a real pairing QR. Everything from "connect" onward
+       (the persistent identity, the live session, real incoming-
+       request handling) is Beacon Wallet's job, a genuinely separate
+       app -- see docs/CONCEPTS.md's platform-philosophy section and
+       beacon_wallet.h for why this isn't handled inline here anymore.
+       Camera and Beacon Wallet meet at exactly this one handoff point. */
     if (ev.type == TEZOS_INPUT_SOFTKEY_R) return TEZOS_ACTION_POP;
     if (ev.type == TEZOS_INPUT_SOFTKEY_L) {
-        memset(&st->peer, 0, sizeof st->peer);
-        st->error_msg[0] = '\0';
-        bool ok = simulate_scan(&st->peer, st->error_msg, sizeof st->error_msg);
-        st->state = ok ? SCAN_SUCCESS : SCAN_FAILED;
-        *needs_redraw = true;
+        *next = beacon_wallet_screen_from_peer(&st->peer);
+        return TEZOS_ACTION_PUSH;
     }
     return TEZOS_ACTION_NONE;
 }
@@ -209,6 +235,7 @@ static tezos_screen_t *scan_screen_get(void) {
     };
     return &g_scan_screen;
 }
+
 
 /* ============================================================
    Capture Mode -- new. Genuinely separate code path from Scan mode,

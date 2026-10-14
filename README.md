@@ -123,12 +123,42 @@ tezos-cyberdeck/
 │                                       (device-tree binding + keymap the shim expects)
 │
 ├── firmware/
-│   └── signer/                    — bare-metal C signer firmware (TBD)
+│   └── signer/                    — STM32F412 signer firmware (production target) +
+│                                     STM32F401 bootstrap (stm32f401_bootstrap/, real
+│                                     hardware on hand now, proves the FULL real toolchain
+│                                     pipeline for the first time -- real linker script +
+│                                     startup file + a real link producing a genuinely
+│                                     valid, flashable image, verified via objdump, not
+│                                     just "it linked". Deliberately excludes the RNG
+│                                     safety layer -- F401 lacks that hardware peripheral).
+│                                     REAL, shared by both targets: the wire protocol
+│                                     (protocol/tezos_signer_apdu.*, ISO 7816-4 APDU
+│                                     framing), the operation-assembly session layer
+│                                     (protocol/tezos_signer_session.*, caught a real logic
+│                                     bug in its own tests). F412-only: a real hardware RNG
+│                                     safety layer (protocol/tezos_signer_rng_core.c +
+│                                     stm32f412/tezos_signer_rng.c) built directly against
+│                                     the real August 2026 Coldcard incident and Coldcard's
+│                                     own real fix. NOT built yet: ed25519 signing, the
+│                                     physical confirm button, real UART/GPIO clock config,
+│                                     real hardware flashing (never attempted yet)
 │
+├── third_party/
+│   ├── stb/stb_image.h            — vendored (nothings/stb v2.30, real MIT/public-domain
+│   │                                 dual license, checked before adding) -- used by
+│   │                                 Gallery's real thumbnail/1:1 viewer
+│   └── cmsis_stm32f4/             — real STM32F412 + ARM CMSIS Core headers, vendored
+│                                     from STMicroelectronics' and ARM's own official repos
+│                                     (Apache 2.0, checked before adding) -- lets the real
+│                                     signer wire protocol cross-compile against the actual
+│                                     target chip's real register definitions
 ├── src/
 │   ├── core/                       — tezOS render API, shared list widget, T9 text-entry
-│   │                                 widget, screen/app/input state machine, and 4 bitmap
-│   │                                 fonts. Built and
+│   │                                 widget, PIN entry widget (tezos_pin_entry.c), screen/app/
+│   │                                 input state machine, 4 bitmap fonts, a real boot splash,
+│   │                                 a real shared address book (tezos_address_book.h), and
+│   │                                 real image decode (tezos_image_decode.h, wraps a vendored
+│   │                                 stb_image.h -- see third_party/). Built and
 │   │                                 verified — real end-to-end push/pop navigation
 │   │                                 proven working (see
 │   │                                 docs/architecture/CORE-ARCHITECTURE.md).
@@ -160,7 +190,16 @@ tezos-cyberdeck/
 │   │                                 tezos_beacon_pair: ties all three together into one real
 │   │                                 pairing flow, verified with a full simulated exchange
 │   │                                 recovering a message byte-for-byte between two independent
-│   │                                 identities — see docs/build-notes/beacon-build-notes.md for what's real vs.
+│   │                                 identities. tezos_store: real encrypted-at-rest key store
+│   │                                 (PIN-derived key via Argon2id, not theater) closing the gap
+│   │                                 where an imported recovery phrase used to vanish on every
+│   │                                 restart — verified with two separate process invocations
+│   │                                 sharing only a file on disk, the strongest test in this
+│   │                                 project. tezos_wifi: real nmcli/NetworkManager integration,
+│   │                                 confirmed as the real current standard for this project's
+│   │                                 target OS before writing any code, fork+execvp (not
+│   │                                 popen/system) for injection safety against user-typed
+│   │                                 SSID/password — see docs/build-notes/beacon-build-notes.md for what's real vs.
 │   │                                 the live homeserver round trip that genuinely isn't testable
 │   │                                 from this environment. tezos_bip39, tezos_slip10: recovery-
 │   │                                 phrase generation/validation and ed25519 HD derivation
@@ -168,28 +207,105 @@ tezos-cyberdeck/
 │   │                                 and SLIP-0010 test vectors (see wallet-app-build-notes.md)
 │   └── apps/
 │       ├── wallet/               — REAL: home + Send-confirm screens, genuinely forge
-│       │                            + sign a transaction via src/chain/ (mock signer —
-│       │                            see wallet-app-build-notes.md for what's still placeholder)
-│       ├── explorer/            — block/contract/operation browsing, "Graveyard" mode
-│       ├── scanner/             — generic entrypoint decode/fill/forge
-│       ├── gallery/              — owned-token viewer
-│       ├── discover/            — objkt/Teia/bootloader.art browsing
-│       ├── messenger/          — Teia Channels V2 client
-│       ├── camera/                — REAL: Scan mode (Beacon QR pairing, real
-│       │                            libqrencode->zbar->parse pipeline) AND Capture mode
-│       │                            (real box-downsample + 4 color-depth modes incl.
-│       │                            programmatically-generated Bayer dithering,
-│       │                            camera_pipeline.c). Both use a "simulate" trigger
-│       │                            in place of real camera hardware, which doesn't
-│       │                            exist here. Camera now opens to a real mode-select.
+│       │                            + sign a transaction via src/chain/ (mock signer).
+│       │                            Send's recipient/amount are real T9 entry now too --
+│       │                            was Wallet's oldest hardcoded gap, closed alongside a
+│       │                            real memory leak shared across 4 files (Wallet/
+│       │                            Messenger/Scanner/Explorer). Contacts is real now
+│       │                            too (was 3 hardcoded fake entries) -- backed by the
+│       │                            new core/tezos_address_book.h, "+ Add Contact" +
+│       │                            real "send to saved contact" (jumps straight to
+│       │                            amount entry, address pre-filled) -- see
+│       │                            wallet-app-build-notes.md for what's still placeholder
+│       ├── explorer/            — REAL: consolidates what used to be a separate
+│       │                            "Scanner" app. Address lookup (T9, not QR --
+│       │                            the actual use case is recovering assets from
+│       │                            a project whose website is already gone) ->
+│       │                            real activity/staleness signals, real
+│       │                            entrypoints (names+types), real holdings, and
+│       │                            now REAL entrypoint calling -- a real T9-driven
+│       │                            walker prompts for each parameter (or list item
+│       │                            count) in the correct order, then forges/signs/
+│       │                            broadcasts. Deliberately does NOT do
+│       │                            vulnerability/bug detection -- see
+│       │                            docs/SECURITY-FINDINGS.md.
+│       ├── scanner/             — kept, not deleted: real QR-based "generic
+│       │                            entrypoint decode/fill/forge" logic, no
+│       │                            longer a separately-registered app -- real,
+│       │                            reusable code pending folding into Explorer
+│       │                            as an alternate input method (not done yet)
+│       ├── gallery/              — REAL: owned-token viewer, real list +
+│       │                            detail view via tezos_tzkt_get_owned_tokens
+│       │                            (the same real, live-verified endpoint as
+│       │                            Messenger's Inbox, generalized to every
+│       │                            contract an address holds anything on).
+│       │                            REAL thumbnail (real fetch/decode via a
+│       │                            vendored stb_image.h -- this project's first
+│       │                            new third-party dep -- + Camera's own
+│       │                            already-generic downsample/RGB565 convert)
+│       │                            and a REAL pannable 1:1 viewer, the one
+│       │                            genuinely new UI interaction this project's
+│       │                            toolkit didn't have before
+│       ├── discover/            — REAL: a real Tezos address browser, old-web-browser
+│       │                            style -- visit any address, real basic info + real
+│       │                            holdings with real images, bookmark for next time.
+│       │                            No hardcoded "known dApps" list -- the real address
+│       │                            book IS the bookmark list, user-curated not
+│       │                            vendor-curated. Reuses Explorer's + Gallery's real
+│       │                            functions unchanged; nothing new at the chain layer
+│       ├── messenger/          — REAL send + REAL inbox. Send: compose (T9
+│       │                         receiver/subject/content), real forge/sign/
+│       │                         broadcast of the actual write_message
+│       │                         entrypoint (contract confirmed by the user
+│       │                         directly against TZKT). Inbox: real FA2
+│       │                         token-balance query + message_infos lookup,
+│       │                         real list + detail view -- rests on a real,
+│       │                         still-unconfirmed assumption (held token ID
+│       │                         == received message ID), which is exactly
+│       │                         what real outside testing is for
+│       ├── camera/                — REAL: Scan mode -- Beacon QR pairing (real
+│       │                            libqrencode->zbar->parse pipeline). Hands off the
+│       │                            decoded peer info to beacon_wallet/ once "CONNECT"
+│       │                            is pressed -- Camera's own job ends at scan+decode.
+│       │                            AND Capture mode (real box-downsample + 4
+│       │                            color-depth modes incl. programmatically-generated
+│       │                            Bayer dithering, camera_pipeline.c). Both use a
+│       │                            "simulate" trigger in place of real camera
+│       │                            hardware, which doesn't exist here. Camera now
+│       │                            opens to a real mode-select.
+│       ├── beacon_wallet/        — REAL: a genuine, standalone Beacon-compatible
+│       │                            wallet, kept protocol-generic ("Beacon Wallet",
+│       │                            no specific wallet's name/branding). Built and
+│       │                            tested against Kukai's real, published Beacon
+│       │                            behavior -- confirmed the architecture works and
+│       │                            generalizes to any Beacon-compatible wallet, but
+│       │                            Kukai has since been removed from production
+│       │                            entirely; representing a specific wallet by name
+│       │                            is a real, open question, not decided here (see
+│       │                            build notes' naming section for the full
+│       │                            back-and-forth). Real persistent identity, real
+│       │                            session, real permission_request/operation_request
+│       │                            handling (approve -> confirm -> sign/broadcast ->
+│       │                            respond). Live Matrix connectivity remains genuinely
+│       │                            unverifiable from this sandbox.
 │       ├── art1bit/                — 1-bit drawing app
-│       └── settings/             — REAL: Device Name (T9 edit/save), About, and Import
-│       │                            Recovery Phrase (T9 + live BIP39 wordlist filtering,
-│       │                            replaces Wallet's active signer on success) screens.
-│       │                            Profiles/Lock/Wi-Fi/Storage/Services still push the
-│       │                            stub (genuinely blocked on profile/PIN system + network)
+│       ├── settings/             — REAL: Device Name (T9 edit/save), About, Import
+│       │                            Recovery Phrase (T9 + live BIP39 wordlist filtering),
+│       │                            RPC Node (real persisted setting, replaces a duplicated
+│       │                            placeholder in wallet.c/scanner.c), Lock/Passcode (real
+│       │                            change-PIN flow), Wi-Fi (real nmcli/NetworkManager
+│       │                            integration, fork+execvp for injection safety), and
+│       │                            Profiles (multiple accounts from one seed, real HD
+│       │                            account-index switching, verified cross-process) screens.
+│       │                            Storage/Services still push the stub (no storage-layer
+│       │                            UI or services concept exists yet)
+│       └── snake/                — REAL: a native game (not a hidden easter egg), real
+│                                    seedable PRNG (not rand()'s global state), real
+│                                    high-score persistence, real 180-reversal prevention.
+│                                    Reachable from Settings -> About ("PLAY SNAKE") -- a
+│                                    real, considered placement, not a main-app-grid slot
 │
-├── tests/                            — 21 permanent test suites, 171 checks total. ONE COMMAND:
+├── tests/                            — 72 permanent test suites, 685 checks total. ONE COMMAND:
 │                                       ./tests/run_all_tests.sh — see tests/README.md. Two suites
 │                                       (network/Matrix) attempt real live calls this project's own
 │                                       dev sandbox couldn't reach -- genuinely more capable on real
@@ -218,3 +334,8 @@ has one settled shape to build into, not because anything's inside yet.
    made so far, and why.
 4. `docs/FUNDING-STRATEGY.md` and `docs/GOVERNANCE-TRANSITION.md` — the
    legitimacy, funding, and eventual community-governance path.
+5. `COMPILE-AND-TEST-PLAN.md` — hand this to anyone (human or agent) who
+   needs to build and verify this project in a plain Debian dev
+   environment before touching real hardware. Independently reproduced
+   once already (`21 passed, 0 failed`, clean `-O2` build of the real
+   target binary) — see `ROADMAP.md`'s M3 section and `tests/README.md`.

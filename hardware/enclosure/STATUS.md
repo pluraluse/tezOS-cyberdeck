@@ -1,5 +1,9 @@
-# Status: not yet started
+# Status: real design brief written, no CAD/modeling started yet
 
-3D-print files for the Nokia/Game Boy Camera-inspired enclosure. Depends on final keypad matrix layout and display mounting decisions.
+See `CHASSIS-DESIGN-BRIEF.md` in this same directory — real, sourced
+component dimensions (Pi Zero 2 W, the CM4 migration path's real
+implications, the 3.5" display, camera module) and layout
+considerations to model against in Blender. Modeling itself hasn't
+started; this is the requirements groundwork.
 
 See ROADMAP.md and BOM.md at the project root for sequencing and scope.

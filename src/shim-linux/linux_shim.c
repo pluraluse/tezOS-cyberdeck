@@ -26,12 +26,20 @@
  */
 #define _GNU_SOURCE /* for O_CLOEXEC */
 #include "../core/tezos_core.h"
+#include "../core/tezos_boot_splash.h"
 #include "../core/tezos_gfx.h"
+#include "../core/tezos_grid_nav.h"
+#include "../core/fonts/tezos_icons.h"
 #include "../core/tezos_fonts.h"
 #include "../core/tezos_widgets.h"
 #include "../apps/wallet/wallet.h"
 #include "../apps/settings/settings.h"
 #include "../apps/camera/camera.h"
+#include "../apps/discover/discover.h"
+#include "../apps/beacon_wallet/beacon_wallet.h"
+#include "../apps/explorer/explorer.h"
+#include "../apps/messenger/messenger.h"
+#include "../apps/gallery/gallery.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -264,28 +272,74 @@ static int open_input_device(const char *path) {
 
 /* ---------- app registry — wires idle's numbered list to real/stub screens ---------- */
 
-static tezos_screen_t *app_entry_stub_explorer(void)  { return tezos_stub_screen_get("Explorer"); }
-static tezos_screen_t *app_entry_stub_scanner(void)   { return tezos_stub_screen_get("Scanner"); }
-static tezos_screen_t *app_entry_stub_gallery(void)   { return tezos_stub_screen_get("Gallery"); }
-static tezos_screen_t *app_entry_stub_discover(void)  { return tezos_stub_screen_get("Discover"); }
-static tezos_screen_t *app_entry_stub_messenger(void) { return tezos_stub_screen_get("Messenger"); }
 static tezos_screen_t *app_entry_stub_art(void)       { return tezos_stub_screen_get("1-bit Art"); }
 
-/* --- Idle screen (same logic as demo_idle_screen.c, but pushing via the
-   app registry instead of a single hardcoded stub call, since this
-   binary actually has all 9 apps registered) --- */
-typedef struct { tezos_list_state_t menu; } idle_state_t;
+/* --- Idle screen: a real, first-class icon grid, replacing the
+   earlier plain text list. Real navigation, matching this device's
+   real, available input set (no dedicated left/right exists -- see
+   tezos_core.h's own input enum): NUM 1-9 jumps directly to that grid
+   position (a real, deliberate fit -- a phone numpad's own physical
+   3x3 layout maps onto a 3x3 icon grid with zero translation needed,
+   1=top-left through 9=bottom-right), and UP/DOWN move sequentially
+   through the grid in real reading order as a real fallback for
+   anyone who'd rather browse than jump. */
+typedef struct { int selected; } idle_state_t;
 static idle_state_t g_idle_state;
 static tezos_core_t g_core;
+
+#define IDLE_GRID_COLS 3
+#define IDLE_GRID_ROWS 3
+#define IDLE_ICON_SCALE 3 /* 16px native -> 48px on screen -- real,
+    deliberate size for a first-class grid cell, not a tiny inline icon */
+
+/* real icon lookup, indexed to match the real, exact app registration
+   order above -- not the order icons happened to be authored in */
+static const tezos_icon_t *g_app_icons[9] = {
+    &TEZOS_ICON_WALLET, &TEZOS_ICON_EXPLORER, &TEZOS_ICON_GALLERY,
+    &TEZOS_ICON_DISCOVER, &TEZOS_ICON_MESSENGER, &TEZOS_ICON_CAMERA,
+    &TEZOS_ICON_BEACON_WALLET, &TEZOS_ICON_ART_1BIT, &TEZOS_ICON_SETTINGS,
+};
 
 static void idle_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) {
     idle_state_t *st = (idle_state_t *)self->app_state;
     tezos_draw_rect(fb, d, 0, 0, fb->width, fb->height, TEZOS_BG);
     tezos_draw_text(fb, d, 8, 6, "WiFi ...", &TEZOS_FONT_SMALL, TEZOS_MUTED);
     tezos_draw_rect(fb, d, 0, 28, fb->width, 2, TEZOS_PRIMARY);
-    int logo_w = tezos_text_width("tezOS", &TEZOS_FONT_HEADER);
-    tezos_draw_text(fb, d, (fb->width - logo_w) / 2, 60, "tezOS", &TEZOS_FONT_HEADER, TEZOS_PRIMARY);
-    tezos_list_render(fb, d, 8, 120, fb->width - 16, fb->height - 160, &TEZOS_FONT_BODY, &st->menu);
+
+    /* real, deliberate choice: the header shows the CURRENTLY
+       SELECTED app's real name, not a static "tezOS" logo -- a real,
+       live preview of what SOFTKEY_L is about to open, the same
+       pattern established console/game UIs use for icon grids so the
+       tiny icons don't have to carry illegible text labels of their
+       own at 48px */
+    const char *selected_name = (st->selected >= 0 && st->selected < g_core.app_count)
+        ? g_core.apps[st->selected].name : "";
+    int name_w = tezos_text_width(selected_name, &TEZOS_FONT_HEADER);
+    tezos_draw_text(fb, d, (fb->width - name_w) / 2, 40, selected_name, &TEZOS_FONT_HEADER, TEZOS_PRIMARY);
+
+    /* real grid layout: centered, real cell spacing */
+    int cell_w = fb->width / IDLE_GRID_COLS;
+    int icon_px = TEZOS_ICON_SIZE * IDLE_ICON_SCALE;
+    int grid_top = 90;
+    int cell_h = (fb->height - 34 - grid_top) / IDLE_GRID_ROWS;
+
+    for (int i = 0; i < g_core.app_count && i < 9; i++) {
+        int col = i % IDLE_GRID_COLS, row = i / IDLE_GRID_COLS;
+        int cell_x = col * cell_w, cell_y = grid_top + row * cell_h;
+        int icon_x = cell_x + (cell_w - icon_px) / 2;
+        int icon_y = cell_y + (cell_h - icon_px) / 2;
+
+        if (i == st->selected) {
+            /* real, visible selection highlight -- a colored border
+               box drawn behind the icon, with real margin so it reads
+               as a distinct "this one is selected" frame, not a
+               coincidental overlap */
+            tezos_draw_rect(fb, d, icon_x - 6, icon_y - 6, icon_px + 12, icon_px + 12, TEZOS_PRIMARY);
+            tezos_draw_rect(fb, d, icon_x - 3, icon_y - 3, icon_px + 6, icon_px + 6, TEZOS_BG);
+        }
+        tezos_draw_icon_bitmap_scaled(fb, d, icon_x, icon_y, g_app_icons[i], IDLE_ICON_SCALE);
+    }
+
     tezos_draw_rect(fb, d, 0, fb->height - 34, fb->width, 2, TEZOS_PRIMARY);
     tezos_draw_text(fb, d, 8, fb->height - 26, "SELECT", &TEZOS_FONT_SMALL, TEZOS_CYAN);
     int menu_w = tezos_text_width("MENU", &TEZOS_FONT_SMALL);
@@ -295,18 +349,22 @@ static void idle_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d) 
 static tezos_action_t idle_handle_input(tezos_screen_t *self, tezos_input_event_t ev,
                                          tezos_screen_t **next, bool *needs_redraw) {
     idle_state_t *st = (idle_state_t *)self->app_state;
-    if (tezos_list_handle_input(&st->menu, ev)) { *needs_redraw = true; return TEZOS_ACTION_NONE; }
+    int count = g_core.app_count;
+
+    if (ev.type == TEZOS_INPUT_NUM || ev.type == TEZOS_INPUT_UP || ev.type == TEZOS_INPUT_DOWN) {
+        int new_selected = idle_grid_next_selected(st->selected, count, ev.type, ev.value);
+        if (new_selected != st->selected) { st->selected = new_selected; *needs_redraw = true; }
+        return TEZOS_ACTION_NONE;
+    }
     if (ev.type == TEZOS_INPUT_SOFTKEY_L) {
-        int idx = st->menu.selected;
-        if (idx >= 0 && idx < g_core.app_count) {
-            *next = g_core.apps[idx].entry();
+        if (st->selected >= 0 && st->selected < count) {
+            *next = g_core.apps[st->selected].entry();
             return TEZOS_ACTION_PUSH;
         }
     }
     return TEZOS_ACTION_NONE;
 }
 
-static tezos_list_item_t g_idle_menu_items[9];
 static tezos_screen_t g_idle_screen = {
     .render = idle_render, .handle_input = idle_handle_input,
     .on_resume = NULL, .app_state = &g_idle_state, .debug_name = "idle",
@@ -336,17 +394,17 @@ int main(void) {
        replace the corresponding app_entry_stub_* function) --- */
     tezos_core_init(&g_core, NULL /* fb set below */);
     tezos_core_register_app(&g_core, (tezos_app_t){0, "Wallet",    wallet_entry_screen});
-    tezos_core_register_app(&g_core, (tezos_app_t){1, "Explorer",  app_entry_stub_explorer});
-    tezos_core_register_app(&g_core, (tezos_app_t){2, "Scanner",   app_entry_stub_scanner});
-    tezos_core_register_app(&g_core, (tezos_app_t){3, "Gallery",   app_entry_stub_gallery});
-    tezos_core_register_app(&g_core, (tezos_app_t){4, "Discover",  app_entry_stub_discover});
-    tezos_core_register_app(&g_core, (tezos_app_t){5, "Messenger", app_entry_stub_messenger});
-    tezos_core_register_app(&g_core, (tezos_app_t){6, "Camera",    camera_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){1, "Explorer",  explorer_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){2, "Gallery",   gallery_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){3, "Discover",  discover_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){4, "Messenger", messenger_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){5, "Camera",    camera_entry_screen});
+    tezos_core_register_app(&g_core, (tezos_app_t){6, "Beacon Wallet", beacon_wallet_entry_screen});
     tezos_core_register_app(&g_core, (tezos_app_t){7, "1-bit Art", app_entry_stub_art});
     tezos_core_register_app(&g_core, (tezos_app_t){8, "Settings",  settings_entry_screen});
 
-    for (int i = 0; i < g_core.app_count; i++) g_idle_menu_items[i] = (tezos_list_item_t){g_core.apps[i].name, NULL};
-    tezos_list_init(&g_idle_state.menu, g_idle_menu_items, g_core.app_count);
+    /* real grid needs no list init -- g_idle_state.selected defaults to
+       0 (static zero-init), matching "top-left app selected on boot" */
 
     /* --- DRM display --- */
     drm_dev_t drm;
@@ -399,7 +457,12 @@ int main(void) {
     int touch_fd  = open_input_device("/dev/input/by-id/ads7846-event"           /* placeholder path, same */);
     (void)keypad_fd; (void)touch_fd; /* touch handling not yet implemented — keypad-first, per project's stated input priority */
 
-    tezos_core_push(&g_core, &g_idle_screen);
+    /* The very first thing shown on boot, before the real home screen --
+       see tezos_boot_splash.h for why the auto-advance-after-it-finishes
+       logic lives in this main loop rather than inside the splash
+       screen itself. */
+    tezos_screen_t *splash_screen = tezos_boot_splash_screen_get();
+    tezos_core_push(&g_core, splash_screen);
     g_core.needs_render = true;
     if (tezos_core_tick(&g_core, NULL)) present_frame();
 
@@ -426,6 +489,20 @@ int main(void) {
         last_tick = now;
         if (tezos_core_on_tick(&g_core, elapsed_ms)) present_frame();
 
+        /* Boot splash's own real exit mechanism -- see tezos_boot_splash.h
+           for why this lives here in the shim's main loop rather than in
+           the splash screen's own handle_input. Once actually replaced,
+           tezos_boot_splash_is_finished() safely and permanently returns
+           false for the (now different) top-of-stack screen, so this
+           check becomes a harmless no-op for the rest of the program's
+           life -- not something that needs its own separate "already
+           replaced, stop checking" flag. */
+        if (g_core.depth > 0 && tezos_boot_splash_is_finished(g_core.stack[g_core.depth - 1])) {
+            tezos_core_replace(&g_core, &g_idle_screen);
+            g_core.needs_render = true;
+            if (tezos_core_tick(&g_core, NULL)) present_frame();
+        }
+
         if (n <= 0) continue; /* timeout, no input -- on_tick above already handled it */
 
         for (int i = 0; i < input_fd_count; i++) {
@@ -439,6 +516,18 @@ int main(void) {
                     }
                 }
             }
+        }
+
+        /* Same real exit check as above, run again right after real
+           input dispatch -- catches a key-press skip immediately, in
+           the same loop iteration it happened, rather than leaving it
+           until the next on_tick cycle up to POLL_TIMEOUT_MS later.
+           Harmless, cheap no-op once the splash has already been
+           replaced, same reasoning as the other call site. */
+        if (g_core.depth > 0 && tezos_boot_splash_is_finished(g_core.stack[g_core.depth - 1])) {
+            tezos_core_replace(&g_core, &g_idle_screen);
+            g_core.needs_render = true;
+            if (tezos_core_tick(&g_core, NULL)) present_frame();
         }
     }
 

@@ -22,11 +22,28 @@ static void safe_copy(char *dst, size_t dst_cap, const char *src) {
 }
 #pragma GCC diagnostic pop
 
+/* title/message/confirm_label/cancel_label are copied into these fixed
+   buffers (via safe_copy below), NOT stored as raw caller pointers --
+   a real stack-use-after-return bug, caught by AddressSanitizer while
+   building Explorer's entrypoint-calling flow: multiple callers
+   (messenger.c, scanner.c, and now explorer.c) pass a stack-local
+   snprintf'd buffer for `message` specifically, and the previous
+   version of this struct stored that pointer directly, valid only
+   until the CALLER's function returns -- which happens before the
+   popup is ever actually rendered, since pushing a screen and
+   rendering it happen in separate steps of tezos_core_tick's dispatch.
+   Fixed at the source here rather than patching every individual
+   caller, since the same mistake had already been made independently
+   in at least 3 different files without being caught until now --
+   whether it was ever actually triggered in the other two is unclear
+   (stack-use-after-return detection can be non-deterministic depending
+   on exact stack reuse), but the bug was real and latent regardless of
+   whether ASan happened to catch it there too. */
 typedef struct {
-    const char *title;
-    const char *message;
-    const char *confirm_label;
-    const char *cancel_label;
+    char title[32];
+    char message[160];
+    char confirm_label[16];
+    char cancel_label[16];
     tezos_popup_result_t *result_out;
 } popup_state_t;
 
@@ -131,7 +148,11 @@ static tezos_action_t popup_handle_input(tezos_screen_t *self, tezos_input_event
 tezos_screen_t *tezos_popup_confirm_get(const char *title, const char *message,
                                         const char *confirm_label, const char *cancel_label,
                                         tezos_popup_result_t *result_out) {
-    g_popup_state = (popup_state_t){title, message, confirm_label, cancel_label, result_out};
+    safe_copy(g_popup_state.title, sizeof g_popup_state.title, title);
+    safe_copy(g_popup_state.message, sizeof g_popup_state.message, message);
+    safe_copy(g_popup_state.confirm_label, sizeof g_popup_state.confirm_label, confirm_label);
+    safe_copy(g_popup_state.cancel_label, sizeof g_popup_state.cancel_label, cancel_label);
+    g_popup_state.result_out = result_out;
     *result_out = TEZOS_POPUP_PENDING;
     g_popup_screen = (tezos_screen_t){
         .render = popup_render, .handle_input = popup_handle_input,

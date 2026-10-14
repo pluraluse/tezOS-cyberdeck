@@ -44,6 +44,22 @@ depends on it. Don't skip ahead.
   does both of these directly against the real core engine rather than
   as two separate throwaway test programs, since the core engine already
   existed and was proven by the time this milestone was reached.
+- **Independently reproduced outside the original dev environment.**
+  Everything in this project up to this point had only ever been verified
+  in the single sandbox it was built in — a real, if modest, limitation
+  on how much confidence to place in "verified." A separate engineer,
+  working from `COMPILE-AND-TEST-PLAN.md` in a different Debian
+  development environment with no other context on the project,
+  independently reproduced both core claims: the full permanent test
+  suite (`tests/run_all_tests.sh`) passed all 21 suites, and the actual
+  target binary (`src/shim-linux/linux_shim.c`, built with the exact
+  `-O2` command that also ships in `scripts/install-tezos-service.sh`)
+  compiled with zero warnings and, when run, printed the expected
+  "DRM init failed" message and exited with status 1 — the correct,
+  designed behavior for an environment with no real `/dev/dri/*`, not a
+  defect. This is the first independent confirmation this project's
+  test suite and build process behave identically outside the
+  environment they were built in.
 
 ## M4 — Boot-to-kiosk
 - Pi boots straight into a systemd service running the test binary — no
@@ -156,35 +172,533 @@ depends on it. Don't skip ahead.
   `docs/build-notes/wallet-app-build-notes.md`), wired into both Send
   and Delegate — as are the real account counter and real branch (head
   hash), both via TZKT, both falling back to the old placeholders only
-  if the network genuinely isn't reachable. Still placeholder: balance
-  display, recipient/amount entry (the T9 widget
-  now exists and is verified — see `docs/architecture/CORE-ARCHITECTURE.md`
-  — but isn't wired into Wallet's Send screen yet), and the RPC node
-  itself is a clearly-marked placeholder pending a Settings-configurable
-  field. Explorer,
-  Scanner, Gallery, Camera still push the generic stub screen.
+  if the network genuinely isn't reachable. **Update: Send's recipient
+  and amount are real now too** (T9 entry, real tez-to-mutez conversion,
+  unit-tested directly since a wrong conversion means sending the wrong
+  amount of real money) — this was Wallet's oldest, most central open
+  gap, closed alongside a real, systemic memory leak found and fixed
+  across four files (Wallet, Messenger, Scanner, Explorer all shared
+  the identical gap) — see
+  `docs/build-notes/wallet-app-build-notes.md` for the full writeup.
+  Still placeholder: balance display, and Delegate's baker-address
+  field (a real, separate, still-unwired gap, deliberately not touched
+  by the Send work). **Update: Gallery is real now** — see its own
+  section further down; Explorer is real too, with its own section further down.
+- **Update: Scanner is consolidated into Explorer** (see Explorer's own
+  section further down, and `docs/build-notes/explorer-app-build-notes.md`)
+  — the real use case (recovering assets from a project whose website
+  is already gone) doesn't need a QR code from a site that no longer
+  exists, just the contract address. Scanner's real code is kept, not
+  deleted, pending folding its QR-input path into Explorer as an
+  alternate method — not done yet. The section below describes
+  Scanner's real capability as it was built, kept for historical
+  accuracy.
+- **Scanner — real, "generic entrypoint decode/fill/forge" delivered,
+  with one important honest caveat.** QR-based call-spec input (real
+  `libqrencode`/`zbar`, the same pipeline
+  already verified for Beacon/Camera), real Michelson entrypoint-call
+  forging, real signing via a new `wallet_sign_operation()` API
+  (Scanner has no signer of its own — signs with whatever identity is
+  active in Wallet), real broadcast attempt, real confirmation gating
+  before anything irreversible. **The QR payload's own JSON schema is
+  hand-rolled, not based on any existing standard** — checked after the
+  fact (not before, unlike Beacon/Matrix/RPC) and confirmed no Tezos
+  equivalent to Ethereum's EIP-681 exists. Means no real third-party
+  dApp can produce a QR this Scanner would recognize today — see
+  `docs/build-notes/scanner-app-build-notes.md`. **Real contract
+  entrypoint discovery added since** — pressing UP after decoding a QR
+  fetches the contract's actual entrypoints via TZKT
+  (`tezos_tzkt_get_contract_entrypoints()`, real endpoint confirmed via
+  multiple independent sources *before* writing code) and flags whether
+  the scanned entrypoint claim is genuinely real, a useful safety check
+  that's still separate from — and doesn't resolve — the underlying
+  schema-interop gap above. That endpoint's exact response shape
+  couldn't be verified against a live fetch this session (disclosed
+  honestly, not glossed over — see the build notes), so parsing is
+  deliberately narrow (names only) and defensive. Deliberately scoped to
+  single-int-parameter calls (matching what `tezos_micheline.c` covers
+  well) and a pre-specified call — both real, bounded follow-ups, not
+  silent gaps.
 - **Settings — real, second full app.** Device Name (real T9 edit/save
   round trip, verified with 10 checks including the actual multi-tap
   sequence and cancel-discards-correctly) and About (real, honestly
   distinguishes actual values from mock ones with no backend yet —
-  see `docs/build-notes/settings-app-build-notes.md`) are built. Profiles,
-  Lock/Passcode, Wi-Fi, Storage, Services still push the generic stub —
-  genuinely blocked on the profile/PIN system and network layer, not
-  arbitrarily deferred.
+  see `docs/build-notes/settings-app-build-notes.md`) are built.
+  **Real persistence now exists too** — `src/chain/tezos_store.c`, a
+  genuinely encrypted (PIN-derived key via Argon2id, not theater) key
+  store closing the gap where an imported recovery phrase used to
+  vanish on every restart. Verified with the strongest test in this
+  project: two separate process invocations sharing only the file on
+  disk, proving a real cross-restart recovery, not just "save returns
+  true" — see `docs/build-notes/wallet-app-build-notes.md`. **Lock/Passcode
+  is now a complete Settings feature**, not just the underlying PIN
+  concept — a real change-PIN flow (verifies the old PIN by actually
+  decrypting, re-saves under a new one). **RPC Node is real too** — one
+  persisted, T9-editable setting replacing what used to be a
+  `DEV_RPC_NODE` placeholder duplicated separately in `wallet.c` and
+  `scanner.c`. **Wi-Fi is real** — genuine `nmcli`/NetworkManager
+  integration (confirmed as the actual current standard on this
+  project's target OS *before* writing any code, unlike two earlier
+  gaps this project caught the hard way — see
+  `docs/build-notes/settings-app-build-notes.md`), verified against a
+  mock nmcli exercising the real fork+execvp+exit-status mechanism and
+  nmcli's own documented terse-output escaping convention. **Profiles is
+  real now too** — multiple accounts derived from the one already-
+  imported seed (the HD account index verified since this project's
+  first BIP39/SLIP-10 work, not new crypto), with a real add/switch UI,
+  verified with the same cross-process rigor as the encrypted store: a
+  completely separate process correctly restores the previously-active
+  account from nothing but the file on disk. Deliberately scoped to
+  "multiple accounts, one seed" — the broader "multiple separate seeds
+  behind discreet PINs" vision from earlier project history remains a
+  real, separate, bigger feature, not built. Storage/Services still push
+  the generic stub — no storage-layer UI or services concept exists yet
+  beyond the key/settings store already built.
+- **Shared dynamic entrypoint-calling engine started** — recognized that
+  Messenger's "post a message to a real contract" and Scanner's "fully
+  interact with any contract without the website" are the same
+  underlying capability. Lives in `tezos_micheline.c` (a natural
+  extension, not a new module): parses a contract's real entrypoint
+  parameter type in the **standard Michelson/Micheline type grammar**
+  (deliberately not TZKT's own less-documented JSON schema convention,
+  which a live example couldn't be captured for) and builds a matching
+  value tree from user-supplied leaf strings. Covers int/nat/mutez/
+  string/bytes/address/bool/unit leaves and pair/or/option composites —
+  scoped deliberately, an out-of-scope type (map, lambda, set) fails
+  parsing cleanly rather than being approximated. **A real, serious bug
+  caught before shipping**: the first draft used one shared buffer for
+  encoding address/bytes leaves, meaning a type with two such leaves
+  (e.g. `pair(address, address)`) would have silently corrupted the
+  first one. Caught by testing two genuinely different real addresses
+  in one such type and searching the final bytes for both
+  independently. Every dynamically-built value verified to encode
+  byte-for-byte identically to the equivalent built through this
+  module's existing, already-verified direct constructors — see
+  `docs/build-notes/scanner-app-build-notes.md`. **Fetching a real
+  entrypoint's type from TZKT is done too** —
+  `tezos_tzkt_get_entrypoints_with_types()`. Confirmed against the real,
+  live Liquidity Baking response the user pulled directly:
+  `"michelineParameters"` (this project's first guess) is exactly
+  correct, and the real data surfaced a real gap synthetic fixtures
+  never would have — every non-trivial entrypoint on that real contract
+  uses a `timestamp` type, which wasn't supported at all until this was
+  caught and fixed. **Update, two more real
+  contracts checked**: QuipuSwap DEX 2.0 (30 real entrypoints) added
+  `list` and `key_hash` support (both genuinely common there) and caught
+  a real capacity bug (node cap of 16 was one node short of a real
+  entrypoint, raised to 48). The real Teia Channels contract — the one
+  Messenger actually needs — surfaced a bigger gap: `write_message`'s
+  cc/bcc/attachments fields are `option(list(...))`, a combination the
+  original list-only-at-the-root design couldn't build at all. Fixed
+  with a real architectural change (list handling unified into the main
+  value builder via a side-channel, works anywhere in the tree now), a
+  breaking API change with every caller found and updated, and the
+  *entire* test suite re-run to confirm no wider regression. Not yet
+  done: wiring this into Scanner's UI or Messenger itself.
 
 ## M10 — Messenger
-- Teia Channels V2 client (contract `KT19ooSLPFxJQ5mx3kR4Qo2UY4KJDcdMdng9`):
-  read via TZKT events/bigmaps, write via IPFS-pin + `post_message`/
-  `create_channel`.
+**Send side is real, built, and tested.** Not against the previously-
+planned `channels.py`-based design or the old address — the live
+contract data (confirmed by the user directly against TZKT:
+`KT19VtkiKbg69tQW2iVkpRLc9h3mkS8y9MMw`) turned out to be a different,
+richer design: a single `write_message` entrypoint with email-like
+fields (subject/content/receivers/cc/bcc/attachments/threading) and
+built-in token-gating, rather than Channels' separate
+create_channel/post_message/Merkle-allowlist model. See
+`docs/build-notes/messenger-app-build-notes.md`'s correction section for
+the full history. Real UI (compose: receiver/subject/content via T9 →
+confirm → real forge/sign/broadcast attempt), hand-built
+`write_message` parameter value (the general dynamic engine's `map`
+gap meant this needed direct construction, not routed through Scanner's
+engine), verified level-by-level against the real confirmed type — not
+just "it builds something." A real stack-use-after-return bug was
+caught by testing under AddressSanitizer, not by inspection — fixed
+before it could cause an actual crash on real hardware.
+
+**Not built**: reading/displaying received messages. The real storage
+schema (also confirmed via TZKT) suggests receiving a message mints an
+FA2 token whose ID equals the message ID — meaning "what's in my
+inbox" should be a standard, already-well-indexed FA2 token-balance
+query followed by a `message_infos` big_map lookup per ID, not novel
+indexing work. This is a real, load-bearing assumption from reading the
+storage shape, not yet independently confirmed. **Update: the Inbox is
+real now too** — token-balance fetch, per-message lookup, a real list
+and detail view, tested under AddressSanitizer (same discipline that
+caught the send-side bug), including a test-only injection hook to
+verify list→detail→back navigation without needing live network
+access. The core "held token = received message" assumption is still
+genuinely unconfirmed — that's exactly what real outside testing is
+for, not something to keep guessing at from a sandbox with no network.
+**A real Network setting was also added** (Mainnet/Ghostnet/Shadownet)
+— every TZKT-querying app had mainnet hardcoded with no way to select
+anything else, which real Shadownet testing immediately required; all
+9 call sites across Wallet/Scanner/Messenger updated.
 - Discover app (objkt/Teia/bootloader.art browsing, buy via Scanner handoff).
+
+## Snake — real, built, reachable from Settings
+A real, native app (not a hidden easter egg), in the spirit of the
+classic phone/console version — `src/apps/snake/`. See
+`docs/build-notes/snake-build-notes.md`. Real seedable PRNG (not
+`rand()`'s global state), real high-score persistence, real
+180-reversal prevention, real distinct head/body sprite coloring.
+Reachable from Settings → About ("PLAY SNAKE"), a real, considered
+placement decision rather than growing the main app grid back after it
+was just deliberately pared down. Two real test-design bugs (not
+product bugs) were caught and fixed while writing the tests — both
+documented honestly in the build notes rather than quietly cleaned up.
+18+ checks under AddressSanitizer, zero errors.
+
+## Headless Access (USB Gadget Mode & UART Console) — real research, one real hardware attempt so far
+See `docs/build-notes/usb-gadget-build-notes.md` for the full writeup.
+**Real hardware update**: a real attempt showed the device boots
+successfully (a genuine, positive signal) but neither WiFi nor the USB
+gadget setup produced reachable results — meaning there's currently no
+way to reach the device over any network at all. Real, current research
+on two fronts: USB gadget mode (`g_ether` alone, not combined with mass
+storage — backed by two independent, converging real sources: the
+Raspberry Pi Foundation's own official tooling deliberately doesn't
+combine functions, citing real Windows driver-binding conflicts, and an
+independent builder who tried a composite gadget reached the same
+conclusion plus surfaced a real data-corruption risk with mass storage
+specifically), and real UART serial console setup as the independent
+fallback that doesn't depend on WiFi or USB working at all — the real
+next step given the current stuck state, since it gives a real shell to
+diagnose the other two problems from inside the device rather than
+guessing blind from outside it. None of this confirmed working yet;
+real, disclosed open item.
+
+## STM32F401 Bootstrap — real, linked, a real flashable image, never flashed yet
+Real hardware on hand now: an STM32F401CCU6 Black Pill board, while
+the real F412 target is on order. Used to prove the *full* real
+toolchain pipeline for the first time — see
+`docs/build-notes/stm32f401-bootstrap-build-notes.md`. A real linker
+script and startup file (STM32F401CCU6's own real 256KB flash/64KB
+RAM), a real link that succeeds, producing a genuinely valid ELF
+(confirmed the `.isr_vector` sits at the real `0x08000000` flash base,
+and the disassembly of `uart_read_byte()` was read by hand — real,
+correct machine code polling the real USART1 address, not just "it
+linked"). A real `build.sh` reproduces byte-identical output from a
+clean run. Reuses the wire protocol and session layers completely
+unchanged — proof the chip-independent design choice paid off, not
+luck. **Deliberately excludes the RNG safety layer** — the STM32F401
+doesn't have that hardware peripheral at all; linking it here would
+either fail outright or silently read garbage and report it as real
+entropy, exactly the failure mode that design exists to prevent.
+Real, honest scope: never actually flashed to real hardware, no clock
+configuration exists yet, and only core Cortex-M4 exception vectors
+are populated (real, acceptable for polled-only operation with
+interrupts never enabled).
+
+## `.tez` Name Resolution — real, tested, wired into Wallet Send
+Real, direct priority call: sequenced ahead of 1-bit Art, built first.
+See `docs/build-notes/tez-domain-resolution-build-notes.md`. Built
+against Tezos Domains' own official documented mechanism (a
+NameRegistry contract's `records` bigmap, keyed by UTF-8-encoded
+domain bytes), not guessed at — the hex-encoding convention was
+verified by hand against a real worked example. Three real, honest
+scope cuts, all disclosed: the documented proxy-resolution step isn't
+implemented (no live network access to verify its exact storage
+shape — the registry contract is instead a real, user-configurable
+Settings value, empty by default rather than a possibly-wrong guessed
+address), full Unicode normalization isn't implemented, and expiry
+checking isn't implemented. Wired into Wallet's Send flow: a `.tez`
+recipient triggers real resolution, with a real, distinct error for
+each real failure mode (unconfigured registry, unresolvable name) —
+never silently proceeding with an unresolvable name as if it were a
+real address. **Two real, unrelated bugs found and fixed along the
+way**: the Settings list was initialized with a stale hardcoded item
+count, making several existing settings rows (RPC Node, Messenger
+Contract, Network) genuinely unreachable via real navigation this
+whole time; and a real build-system gap where a new hard dependency in
+`wallet.c` broke ~19 other tests that link Wallet, fixed by moving the
+dependency into `APP_WALLET`'s own shared definition. 26 checks total
+across three real test suites, all under AddressSanitizer. Full
+69-suite regression run twice, full-stack build clean.
+
+## Grid Home Screen — real, tested, replaces the old text-list entirely
+Real, direct follow-through on "the grid should be a first class
+experience": see `docs/build-notes/grid-home-screen-build-notes.md`.
+Real navigation built against this device's actual input (confirmed by
+reading the real input enum, not assumed) — no dedicated left/right
+exists, so `NUM` 1-9 jumps directly to a grid position (a real,
+deliberate fit with a phone numpad's own 3×3 physical layout),
+`UP`/`DOWN` traverse sequentially with real wrap-around as a fallback.
+A real, live "selected app" name preview replaces the old static logo.
+Real, integer-scaled icon rendering (`tezos_draw_icon_bitmap_scaled`,
+nearest-neighbor, deliberately not smoothed) gives icons real visual
+presence at 3× native size. The actual navigation math was extracted
+into its own portable, testable module
+(`tezos_grid_nav.h`/`.c`) specifically because the home screen had
+never been independently testable before, even in its old list-based
+form. 14 checks on the navigation math, 10 on the rendering functions
+(2 new for scaled blit) — including a real test bug (an undersized
+test framebuffer) AddressSanitizer caught and this project fixed on
+the first run, not hidden. Full 72-suite regression run twice,
+full-stack build clean, and the actual rendered grid reviewed visually
+via a real screenshot, not assumed correct from the math alone.
+
+## App Menu Icons — real rendering pipeline built, all 9 app icons designed
+Real technical foundation done: see
+`docs/build-notes/app-icons-build-notes.md`. A real correction made
+along the way — this project's own earlier claim of "no icons at all"
+was wrong; real infrastructure (MEK-Dings, a licensed font) already
+existed, just stylistically mismatched once the actual glyphs were
+checked directly. Direction settled: true multi-color mascot-style
+icons (ICQ/AIM era). A real shared rendering function
+(`tezos_draw_icon_bitmap`, extracted from duplicated blit code in
+Gallery and Discover) plus a real authoring tool
+(`tools/rasterize_icons.py`, icons as plain editable text) now exist.
+8 checks under AddressSanitizer, including pixel-exact placement and
+real bounds-clipping verification. All 9 real icons designed, reviewed
+twice: a second pass, with concepts confirmed agreed-upon beforehand,
+gave real, clear improvements to Wallet, Discover, and Beacon Wallet.
+Explorer's second attempt is honestly a disclosed tradeoff, not a
+clean win — bolder but less recognizable as a magnifying glass — and
+is stated as such rather than claimed as success. Wired into the real
+grid home screen below.
+
+## Discover's Suggested list — real, built, cross-verified
+Real follow-through on the design discussed earlier: see
+`docs/build-notes/discover-suggested-list-build-notes.md`. Three
+addresses (Teia Marketplace, objkt.com Marketplace v2, Liquidity
+Baking), each cross-verified against multiple independent real
+sources before inclusion — not a single unverified claim, matching
+this project's own hard-learned lesson about exactly that mistake.
+Visually distinct from real bookmarks (a real ★ prefix, appended after
+the user's own list, never equal footing). 4 checks under
+AddressSanitizer, including a real screenshot confirming the exact
+correct address gets visited when a Suggested entry is selected.
+
+## Discover — real, built almost entirely by reusing existing capability
+A real Tezos address browser, in the spirit of an old-web browser --
+visit any address, see real basic info, browse real holdings with real
+images, bookmark for next time. See
+`docs/build-notes/discover-app-build-notes.md`. **A real, deliberate
+decision**: no hardcoded "known dApps" list -- the real, already-tested
+address book *is* the bookmark list, user-curated like a real
+browser's, not vendor-curated (this project has its own recent history
+of a contract address being mislabeled with the wrong platform name in
+a third-party report, caught only by independently checking it --
+shipping an unverifiable hand-picked list felt like the wrong kind of
+confidence to bake in). Nothing about Discover needed new chain-layer
+code -- reuses Explorer's real contract-info/entrypoint functions and
+Gallery's real, already-generic owned-tokens/image-decode pipeline
+unchanged. A real design bug (browsing gated behind bookmarking, an
+arbitrary constraint no real browser has) was caught and fixed while
+writing this app's own test. 10 checks under AddressSanitizer, zero
+errors. Real, disclosed scope: no hand-off to Explorer's entrypoint-
+calling yet, and real, disclosed duplication of Gallery's image
+pipeline rather than a shared extraction in this pass.
+
+## Signer Wire Protocol — real, tested, cross-compiled for the real STM32F412
+The chip decision landed on the STM32F412 (over the cheaper F401/F411,
+specifically for its real hardware TRNG). See
+`docs/build-notes/signer-protocol-build-notes.md`. Real ISO 7816-4
+APDU framing (`firmware/signer/protocol/tezos_signer_apdu.*`),
+deliberately portable and chip-independent, 22 checks under
+AddressSanitizer. A real operation-assembly session layer
+(`tezos_signer_session.*`) reassembles a complete operation across one
+or more chunks, 31 checks — including a real logic bug this module's
+own tests caught (an earlier version discarded a legitimately
+in-progress multi-chunk operation's bytes on its final chunk, since it
+couldn't distinguish "genuine completion" from "a fresh, unrelated
+single-chunk operation"; fixed by tracking whether a real sequence was
+already underway). **A real hardware RNG safety layer**
+(`tezos_signer_rng_core.c`/`stm32f412/tezos_signer_rng.c`), built
+directly against the real, ongoing August 2026 Coldcard hardware
+wallet incident — a firmware path that silently fell back to a weak,
+predictable seed when its real hardware entropy source misbehaved,
+with no error or warning, generating brute-forceable keys. This
+project's RNG driver follows Coldcard's own real, subsequent fix
+(github.com/Coldcard/firmware #692/#693) rather than reinventing it,
+and enforces one rule structurally: every caller gets a genuinely
+verified random word or a signal to halt (`tezos_signer_panic_halt()`)
+— never a silent fallback to anything softer. 8 checks, using the same
+register-mocking technique Coldcard's own engineers used. All three
+modules **cross-compiled cleanly for the real target**: a real ARM
+cross-compiler installed, real STM32F412 CMSIS headers vendored from
+ST's and ARM's own official repos (Apache 2.0), verified via `objdump`
+to genuinely be `armv7e-m` Cortex-M4 machine code at both `-O0` and
+`-O2`, zero warnings. `main.c` genuinely dispatches `INS_SIGN` through
+the session layer now. Real, honest scope: this proves the protocol
+code is valid for the real chip, not a flashable firmware image — no
+linker script, startup file, real UART/GPIO clock configuration, or
+actual signing logic exist yet.
+
+## Address Book — real, built, integrated into Wallet
+A real, shared "save a name, reuse the address" module
+(`src/core/tezos_address_book.h`/`.c`), core-adjacent so any app can use
+it. See `docs/build-notes/address-book-build-notes.md`. Real validation
+on add (via `tezos_forge_address`, the same check every forge call
+uses), real persistence (verified with a genuine two-process test,
+same rigor as Settings' own), real delete-and-shift. Wired into
+Wallet's Contacts page, which previously showed three hardcoded fake
+entries — now real, with a "+ Add Contact" flow and real "send to a
+saved contact" that jumps straight to amount entry, skipping manual
+recipient re-entry. A real ordering bug (calling a function before its
+definition, after a mid-file relocation) was caught by the compiler
+and fixed by moving the code, not by a forward-declaration workaround.
+**Not yet done**: Messenger's and Explorer's own address entry don't
+offer "pick from saved" yet, and there's no dedicated contact-delete UI
+(the underlying function exists and is tested; no screen calls it yet).
+
+## Boot Splash — real, tested, wired into boot
+An original animation in the spirit of the classic 16-bit console boot
+logo (a bright gleam sweeping through "tezOS," letter by letter, plus
+an accent beam) — built for tezOS's own name and palette, not a
+reproduction of anyone else's specific artwork. See
+`docs/build-notes/boot-splash-build-notes.md`. Shown once, first,
+before the real home screen; auto-advances after the animation
+completes, or immediately on any real key press. A real design
+correction happened while building this: the first draft tried to skip
+itself via `ACTION_POP`, which would have been a silent no-op on real
+hardware (the splash is the only screen on the stack at that point, and
+`tezos_core_pop()` correctly refuses to ever pop the last screen) —
+fixed so the platform shim's own main loop performs the real transition
+for both the timer-elapsed and key-press-skip cases. 10/10 checks
+passing; never yet rendered on real DRM hardware, only in the software
+test harness, same disclosed gap as everything else in this project.
+
+## Beacon Wallet — real, standalone app, kept protocol-generic
+tezOS can now act as a genuine Beacon-compatible wallet in its own
+right, so this device can pair with any Beacon dApp. See
+`docs/build-notes/beacon-wallet-app-build-notes.md`'s naming section
+for the full, honest back-and-forth this went through, and
+`docs/CONCEPTS.md`'s platform-philosophy note. **A real architectural
+correction happened mid-build**: this started as an extension of
+Camera's Scan mode, then was properly separated into its own standalone
+app, `src/apps/beacon_wallet/` — Camera hands off the decoded pairing
+info at exactly one point once a QR is scanned, and everything from
+"connect" onward (a persistent identity, deliberately separate from any
+Tezos account key; real incoming-request handling for both
+`permission_request` and `operation_request`; approve via the same
+popup-confirm pattern used throughout this project; sign via the real
+forge/sign/broadcast pipeline; respond with the real result) lives in
+the new app, not tangled into Camera's own internals. **The naming
+question itself went through several real corrections and landed on
+protocol-generic for now** — this project built and tested the app
+against Kukai's real, published Beacon behavior, which confirmed the
+architecture works and genuinely generalizes to any Beacon-compatible
+wallet, but Kukai has been removed from production entirely; no Kukai
+name or branding ships anywhere. How (or whether) to represent a
+specific real wallet by name on this device is a real, open question,
+deliberately not decided here. A real bug (a genuine `strncpy`
+null-termination gap on network-derived data, not a false positive) was
+caught and fixed while building this. Verified 8/8 under
+AddressSanitizer, reusing the exact real `permission_request` fixture
+already verified against `beacon-sdk` schemas elsewhere in this
+project. Real, disclosed gaps: DENY doesn't send a real rejection
+response, only the first operation in a batch is handled, the
+`permission_response`'s public key is a placeholder, and the live
+Matrix round trip remains genuinely unverifiable from this sandbox.
+
+## Explorer — real (consolidates the former Scanner app)
+Address lookup (T9, primary flow) plus real activity/staleness signals,
+real entrypoints (names+types, via the shared dynamic engine), real
+holdings, and now **real entrypoint calling** — built for the actual
+stated use case: recovering your own assets from a project whose
+website has already gone dark, which needs a contract address, not a
+QR code from a site that no longer exists. See
+`docs/build-notes/explorer-app-build-notes.md` for the full writeup,
+including two real compiler warnings caught and fixed (one via a larger
+buffer, one via this project's already-established pragma-suppression
+pattern for a known GCC static-analysis limitation). **Deliberately,
+permanently out of scope: any vulnerability/bug detection** — see
+`docs/SECURITY-FINDINGS.md`.
+
+**Update: the single largest remaining UI-engineering gap is closed.**
+A new interactive type-walker (`tezos_micheline_walker_t`,
+`tezos_micheline.h`/`.c`) turns the shared dynamic engine into a real,
+pausable state machine a UI can drive one T9 prompt at a time — verified
+with 27 checks including the exact `option(list(address))` shape
+Messenger needed, now provably buildable through the general walker
+rather than hand-built. Wired into Explorer: select an entrypoint with a
+known type, get prompted for each real value in the correct order,
+confirm, and it forges/signs/broadcasts through the same real pipeline
+every other send flow uses. **A second real stack-use-after-return
+bug, latent in Messenger's and Scanner's confirmation flows too, was
+found and fixed at the source** (`tezos_popup.c` now copies its strings
+instead of storing raw caller pointers) — see
+`docs/architecture/CORE-ARCHITECTURE.md`'s popup section. Real,
+disclosed scope remaining: `or`-typed choices always take `Left`,
+optional fields are always filled in (never omitted), and a `map`
+anywhere in an entrypoint's type still makes it uncallable — all
+unchanged, pre-existing engine-level scope cuts, not new gaps from this
+work.
+
+## Gallery — real (built ahead of its original milestone slot)
+Real owned-token list + detail view via `tezos_tzkt_get_owned_tokens()`
+— the same real, live-verified endpoint as Messenger's Inbox,
+generalized to every contract an address holds anything on rather than
+one specific contract. See
+`docs/build-notes/gallery-app-build-notes.md` for the full writeup,
+including a real, structural bug this caught and fixed in
+`scripts/install-tezos-service.sh`: the hand-listed app directory list
+was silently missing both `messenger.c` and `gallery.c` — the exact
+"drifts stale" problem this project's own history already documents
+happening twice before with a different list. Fixed properly this time
+by replacing it with a `find`-based glob, structurally immune to this
+for every future app.
+
+**Update: the thumbnail + 1:1 pixel viewer is real now too** — see
+`docs/build-notes/gallery-viewer-build-notes.md`. This project's first
+genuinely new third-party dependency (`stb_image.h`, real, checked
+license, vendored into `third_party/stb/`), real IPFS URI resolution,
+and a real pannable 1:1 viewport — the one genuinely new UI interaction
+this project's toolkit didn't have before. Reuses Camera's *already-
+generic* downsample/RGB565-convert functions directly, needing zero new
+image-processing code for the resize/convert step. Two real memory
+leaks (a stale `full_pixels` buffer across repeated Gallery visits) were
+caught and fixed before shipping. 20 checks total across the decode/
+IPFS module and the viewer's pan/clamp/blit mechanics, all under
+AddressSanitizer.
 
 ## M11 — Community readiness
 - Stage 1 custom carrier board (see hardware roadmap notes) replacing
   breadboard/jumper wiring.
+- **Chassis: real design brief written** (`hardware/enclosure/CHASSIS-
+  DESIGN-BRIEF.md`) — real, sourced component dimensions (Pi Zero 2 W,
+  the CM4 migration path's real implications for internal volume, the
+  3.5" display, camera module) and layout considerations, to model
+  against in Blender and 3D print. No CAD/modeling started yet; this
+  is the requirements groundwork the old placeholder was waiting on.
 - Full build docs, BOM finalized, curated app-repo model documented.
 - License finalized (MIT + CERN-OHL-P) across all repos.
 
 ## Deferred / post-launch tier (valuable, not blocking)
+- **Camera-direct minting** — real idea, deliberately kept as a draft,
+  not built: letting Camera's 1-bit/Art1bit output mint directly rather
+  than requiring an external step. Explicit decision made when this was
+  raised: **check whether an existing, already-audited contract (e.g.
+  the real, confirmed HEN contract, `KT1RJ6PbjHpwc3M5rw5s2Nbmefwbuwbdxton`)
+  already exposes a usable public mint entrypoint before considering a
+  custom-deployed contract** — deploying new Michelson/SmartPy is a
+  genuinely different category of work (real authorship this project
+  has no experience in, real origination cost, real security review
+  before trusting it with value) than anything built so far, and was
+  agreed to be real scope creep for now. Revisit only when actually
+  decided to move forward, not before.
+- **Gallery: real thumbnail + 1:1 pixel viewer** — fully scoped, not
+  started (see `docs/build-notes/gallery-app-build-notes.md`'s own
+  scoping section for the full real plan: IPFS URI resolution, a real,
+  checked candidate decode library (`stb_image.h`), reusing Camera's
+  existing downscale/dither techniques generalized for arbitrary
+  images, and one genuinely new UI pattern this project doesn't have
+  yet — pannable 1:1 viewing on a fixed 320×480 panel). A real,
+  standalone effort, not a quick follow-up.
+- **`.tez` name management/registration app** — a real consideration,
+  raised alongside the Farcaster-style identity discussion (see
+  `docs/architecture/` or search history for the Tezos Domains contract
+  address, `KT1Mqx5meQbhufngJnUAGEGpa4ZRxhPSiCgB`, confirmed real via
+  the TZKT explorer and a third-party indexer's documented API). Open
+  question, explicitly not decided yet: build this as a `.tez`
+  registration/management app on top of the existing name service, OR
+  go phone-number-style instead (a device-tied secondary identifier,
+  closer to Farcaster's FID model) — these are two different identity
+  approaches, not the same feature with two names, and the choice
+  affects how Messenger/contact-adding ends up working. Revisit once
+  there's a clearer sense of which direction fits the device's actual
+  use, not before.
 - HEN v2 collection cloning (user-as-creator origination) + mint/list forms.
 - Minimal DeFi swap feature (single DEX/aggregator via Scanner pipeline).
 - Local mesh chat (offline conference/badge social, ad-hoc WiFi).

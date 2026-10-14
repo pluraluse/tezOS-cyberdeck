@@ -224,6 +224,30 @@ richer system-message style would layer on the same pattern (a
 non-clearing pushed screen) if/when needed — not built separately since
 the confirm/cancel version already demonstrates the mechanism.
 
+**A real stack-use-after-return bug, latent across multiple callers,
+found and fixed at the source.** `tezos_popup_confirm_get()`'s original
+implementation stored the caller's `title`/`message`/`confirm_label`/
+`cancel_label` pointers directly — never copied. Pushing a screen and
+actually rendering it happen in separate steps of `tezos_core_tick`'s
+dispatch, so any caller building `message` in a stack-local buffer
+(exactly what a real confirmation message needs — it has to include the
+actual amount, address, or entrypoint name) had that buffer go out of
+scope before the popup ever read it. Caught by AddressSanitizer while
+testing Explorer's new entrypoint-calling flow — but a direct check
+afterward confirmed `messenger.c` and `scanner.c` build their own
+confirmation messages the exact same way, meaning they carried the same
+latent bug independently, whether or not ASan happened to catch it
+there too (stack-use-after-return detection isn't fully deterministic).
+Fixed once, at the source, rather than patched at each call site:
+`popup_state_t` now owns fixed-size buffers and copies all four strings
+via `safe_copy()` (a helper already in this file for an earlier,
+unrelated reason). Sizes were set from the real callers' actual usage,
+not guessed — `messenger.c`'s 160-byte message buffer was the largest
+real one found. Reverified clean under AddressSanitizer afterward:
+Explorer's own new test (the one that caught this), plus Messenger's
+and Scanner's existing confirm-flow tests, all rerun and passing with
+zero ASan errors — not just "compiles now."
+
 ## T9 text entry (`tezos_t9.h`/`.c`)
 
 Multi-tap text entry, closing the gap that blocked Settings, Messenger,

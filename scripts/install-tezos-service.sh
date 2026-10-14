@@ -24,13 +24,32 @@ sudo apt install -y build-essential libdrm-dev libsodium-dev \
     libcurl4-openssl-dev libcjson-dev libqrencode-dev libzbar-dev pkg-config
 
 cd "$(dirname "$0")/../src/shim-linux"
+# Globs, not a hand-maintained file list -- this exact list has drifted
+# stale and silently broken this script TWICE now (once missing the
+# entire chain/ layer and every app, once missing three more files
+# added in a later session). A new .c file in any of these directories
+# now just needs to exist in the right place, not be remembered and
+# added here by hand.
+#
+# ONE explicit exclusion: core/demo_idle_screen.c is a standalone demo
+# program with its own main() (a duplicate-main link error otherwise),
+# not a shared library module -- everything else in these directories
+# genuinely is meant to be linked into the real shim.
+CORE_SOURCES=$(ls ../core/*.c | grep -v demo_idle_screen.c)
+# Real bug this exact pattern already caused twice before (see git history /
+# ROADMAP.md): a hand-listed app directory list drifts stale whenever a new
+# app goes from stub to real and nobody remembers to add it here -- this
+# session it was messenger.c AND gallery.c, both silently missing. `find`
+# (unlike a raw glob) doesn't error or leave a literal unmatched pattern on
+# the command line for app directories that are still stub-only (no .c
+# files yet, e.g. explorer/discover/art1bit) -- structurally immune to this
+# drift the same way CORE_SOURCES already is, rather than needing yet
+# another manual fix next time an app goes real.
+APP_SOURCES=$(find ../apps -name '*.c')
 gcc -O2 -Wall -Wextra -std=c11 -o tezos_shim linux_shim.c \
-    ../core/tezos_core.c ../core/tezos_gfx.c ../core/tezos_fonts.c ../core/tezos_widgets.c ../core/tezos_t9.c ../core/tezos_popup.c \
-    ../chain/tezos_base58.c ../chain/tezos_forge.c ../chain/tezos_signer.c ../chain/tezos_bip39.c ../chain/tezos_slip10.c ../chain/tezos_micheline.c ../chain/tezos_signer_protocol.c ../chain/tezos_http.c ../chain/tezos_tzkt.c ../chain/tezos_rpc.c \
-    ../chain/tezos_beacon_crypto.c ../chain/tezos_beacon_message.c ../chain/tezos_beacon_qr.c ../chain/tezos_matrix.c ../chain/tezos_beacon_pair.c \
-    ../apps/wallet/wallet.c \
-    ../apps/settings/settings.c ../apps/settings/import_recovery.c \
-    ../apps/camera/camera.c ../apps/camera/camera_pipeline.c \
+    $CORE_SOURCES \
+    ../chain/*.c \
+    $APP_SOURCES \
     -I../core -I../chain -I../apps/wallet -I../apps/settings \
     $(pkg-config --cflags --libs libdrm) $(pkg-config --cflags --libs libsodium) -lcurl -lcjson -lqrencode -lzbar -lm
 

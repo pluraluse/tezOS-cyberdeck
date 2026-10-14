@@ -82,6 +82,47 @@ void tezos_dirty_mark(tezos_dirty_t *d, int x, int y, int w, int h) {
     d->rects[d->count++] = (tezos_rect_t){x, y, w, h};
 }
 
+void tezos_draw_icon_bitmap(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y, const tezos_icon_t *icon) {
+    for (int iy = 0; iy < TEZOS_ICON_SIZE; iy++) {
+        int fy = y + iy;
+        if (fy < 0 || fy >= fb->height) continue;
+        for (int ix = 0; ix < TEZOS_ICON_SIZE; ix++) {
+            int fx = x + ix;
+            if (fx < 0 || fx >= fb->width) continue;
+            fb->pixels[fy * fb->width + fx] = icon->pixels[iy * TEZOS_ICON_SIZE + ix];
+        }
+    }
+    tezos_dirty_mark(d, x, y, TEZOS_ICON_SIZE, TEZOS_ICON_SIZE);
+}
+
+void tezos_draw_icon_bitmap_scaled(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y,
+                                   const tezos_icon_t *icon, int scale) {
+    if (scale < 1) scale = 1; /* real, defensive floor -- a real caller
+        passing 0 or negative shouldn't produce an inverted or empty
+        draw, just fall back to native size */
+    int size = TEZOS_ICON_SIZE * scale;
+    for (int iy = 0; iy < TEZOS_ICON_SIZE; iy++) {
+        for (int ix = 0; ix < TEZOS_ICON_SIZE; ix++) {
+            uint16_t px = icon->pixels[iy * TEZOS_ICON_SIZE + ix];
+            /* real nearest-neighbor: each source pixel becomes a real
+               scale x scale solid block -- deliberately not smoothed/
+               interpolated, since blending would blur the exact,
+               deliberate pixel-art edges this whole icon system is
+               built around */
+            for (int sy = 0; sy < scale; sy++) {
+                int fy = y + iy * scale + sy;
+                if (fy < 0 || fy >= fb->height) continue;
+                for (int sx = 0; sx < scale; sx++) {
+                    int fx = x + ix * scale + sx;
+                    if (fx < 0 || fx >= fb->width) continue;
+                    fb->pixels[fy * fb->width + fx] = px;
+                }
+            }
+        }
+    }
+    tezos_dirty_mark(d, x, y, size, size);
+}
+
 void tezos_draw_rect(tezos_fb_t *fb, tezos_dirty_t *d, int x, int y, int w, int h, tezos_color_t color) {
     uint16_t px = rgb565(color);
     for (int row = y; row < y + h; row++) {
