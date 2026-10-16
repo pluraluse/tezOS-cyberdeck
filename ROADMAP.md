@@ -23,6 +23,25 @@ depends on it. Don't skip ahead.
   accepts RGB565 dumb buffers (noted as a real open question in the
   shim's comments — some tinydrm-class drivers only support XRGB8888).
 
+**Real update (2026-10-15):** first live hardware session with real shell
+access (USB `g_serial`, not UART). Full writeup:
+`docs/build-notes/display-bringup-build-notes.md`. Short version: `piscreen`
+(ILI9486, the BOM assumption) and the bundled Adafruit `pitft35-resistive`
+(HX8357D) overlay both failed — the Adafruit one bound cleanly but produced
+zero visual response at all. The generic `fbtft,ili9481` overlay, using DC/
+RESET pins confirmed by decompiling `piscreen.dtbo` (GPIO24/25), produced
+the first real pixel-level response this project has had, at `rotate=0`
+only — `rotate=90`/`270` both broke buffer coverage and were abandoned.
+Color/orientation correctness didn't survive repeated reboots consistently
+through driver flags alone (`bgr` gave different results across boots on
+the same config — likely a breadboard connection issue, not confirmed, not
+chased further). **Decision: design around it instead of chasing root
+cause** — `rotate=0` is locked in, R/B channel swap is done in software
+(`tools/display-pattern/baseline_pattern.py`) rather than trusted to the
+`bgr` flag, and buffer origin `(0,0)` is treated as a fixed reference point
+whose physical corner is a mounting/enclosure decision, not a display-driver
+question. Touch (XPT2046) is not wired into the current overlay at all yet.
+
 ## M2 — Input working
 - TCA8418 keypad decoder wired over I2C: numeric matrix + 2 softkeys +
   dedicated Up/Down buttons, all through one interrupt line.
@@ -366,6 +385,16 @@ next step given the current stuck state, since it gives a real shell to
 diagnose the other two problems from inside the device rather than
 guessing blind from outside it. None of this confirmed working yet;
 real, disclosed open item.
+
+**Real update (2026-10-15):** `enable_uart=1` and `dtoverlay=disable-bt`
+applied directly to the card's `config.txt` (backed up first); `cmdline.txt`
+already had `console=serial0,115200`. Not yet boot-tested on real hardware —
+see `docs/build-notes/usb-gadget-build-notes.md` for the full writeup, the
+pre-existing-but-undocumented `piscreen` overlay swap found on the same card,
+and a real lead on the WiFi question (the card's WiFi creds are in the legacy
+`wpa_supplicant.conf`, which a NetworkManager-based image — likely, given this
+is the same Trixie-class build already noted above — does not consume; not
+yet confirmed or fixed).
 
 ## STM32F401 Bootstrap — real, linked, a real flashable image, never flashed yet
 Real hardware on hand now: an STM32F401CCU6 Black Pill board, while

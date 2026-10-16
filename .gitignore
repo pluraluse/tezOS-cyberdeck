@@ -11,3 +11,5 @@ tests/*.ppm
 .ppm
 tezos_shim
 AGENTS.md
+__pycache__/
+*.pyc

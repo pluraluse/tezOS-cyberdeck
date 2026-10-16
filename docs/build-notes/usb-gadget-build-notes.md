@@ -171,6 +171,65 @@ Debian 13/Trixie image (NetworkManager profiles vs. a legacy
 NetworkManager), and confirming the SSID/password were actually
 written correctly for whichever mechanism is real for this image.
 
+## Real update (2026-10-15) — UART enabled on the actual card, not yet boot-tested
+
+The microSD card was pulled and read directly (mounted read-only first,
+boot partition only, `/dev/sdb1` on `.63`) rather than guessed at blind.
+Findings before any change:
+
+- `config.txt` already had `dtoverlay=dwc2,dr_mode=peripheral` (USB
+  peripheral mode, per the manual fallback above) and `dtoverlay=piscreen`
+  (swapped from `dtoverlay=ili9486` at some point — a
+  `config.txt.bak-pre-piscreen` backup exists, dated 2026-10-14, but no
+  corresponding build note recorded that change; flagging the gap rather
+  than guessing at its reasoning here).
+- **`enable_uart=1` and `dtoverlay=disable-bt` were *not* present yet** —
+  confirms this step genuinely hadn't been done, matching this document's
+  own "hasn't been tried yet at all" note above.
+- `cmdline.txt` already contains `console=serial0,115200` — so the
+  "likely already present by default" guess above was correct; nothing
+  needed adding there.
+
+Applied the fix from the "UART serial console" section above: backed up
+to `config.txt.bak-pre-uart`, appended `enable_uart=1` and
+`dtoverlay=disable-bt`, remounted read-only, and re-read the file back to
+confirm the write landed. Card was then unmounted cleanly and handed back.
+
+**Still real, still open:** this has not been boot-tested on the actual
+Pi yet — the card needs to go back into the hardware and be wired to a
+USB-to-TTL adapter (GPIO 14/15, 3.3V, 115200 baud, per the wiring notes
+above) before "UART gives a real shell" can move from configured to
+confirmed.
+
+## Real lead on the WiFi question (2026-10-15) — not yet acted on
+
+While the card was mounted, checked the actual files behind the "why
+WiFi didn't connect" open item above, rather than leaving it a pure
+guess:
+
+- `network-config` and `user-data` (the newer cloud-init-based
+  configuration path) are **both entirely default, commented-out
+  boilerplate** — zero active directives in either file. Cloud-init is
+  not configuring networking on this card at all.
+- `wpa_supplicant.conf` **does** have a real network block (`country=US`,
+  a real SSID and PSK) — this is the older, legacy
+  dhcpcd+wpa_supplicant convention that Raspberry Pi Imager's "legacy"
+  OS-customisation wizard writes.
+- This image is pi-gen-built 2026-06-18 (`issue.txt`), the same
+  Trixie-based generation already noted above as having moved toward
+  NetworkManager by default. If that's the case here, NetworkManager
+  does not consume `/boot/firmware/wpa_supplicant.conf` the old
+  dhcpcd-era way — which would fully explain "device boots, WiFi radio
+  never connects" without needing a credentials or regulatory-domain
+  problem at all.
+- **Not yet confirmed or fixed** — this is a real, strengthened
+  hypothesis from reading the actual card, not a confirmed root cause.
+  Confirming which network stack this image actually runs (and, if it's
+  NetworkManager, writing an actual `.nmconnection` profile instead)
+  needs either the UART shell above or another card-read pass. Left
+  alone this round rather than changing two things on the card in the
+  same pass without a chance to test the first one.
+
 ## Real, disclosed gaps — this is genuinely untested from this environment
 
 - **Neither the USB gadget config nor the UART console setup above has
