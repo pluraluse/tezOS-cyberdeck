@@ -41,11 +41,12 @@ assumption. Full narrative: `docs/build-notes/project-status-2026-10-16.md`.
 | **Discover** | Real — address browsing, bookmarking, cross-verified Suggested list | No open gap found this pass |
 | **Messenger** | Real — Channels, Token Gated Chat, Poll/Token Comments, compose/inbox UI | Never round-tripped through a real Matrix homeserver (needs real network access this project's dev sandbox didn't have) — worth doing now that WiFi is confirmed working on real hardware |
 | **Camera** | Real software pipeline — Scan mode, Capture mode, box-average downsample, 4 color-depth modes | No real sensor wired (gap #3). Also: Capture Mode's scroll interaction for the two oversized presets (800×480, 640×480) isn't implemented; save/mint handoff is blocked on 1-bit Art not existing yet |
-| **Beacon Wallet** | Real incoming-request handling (approve → confirm → sign/respond), kept protocol-generic | One flagged correctness gap: `perform_permission_confirm()` falls back to using the account *address* as the *public key* if derivation fails — needs the real public key, not a same-shaped stand-in (see `beacon_wallet.c:86`) |
-| **1-bit Art** | Pure stub — zero lines of code, `app_entry_stub_art()` only | Not started. Also blocks Camera's save/mint handoff (above) |
+| **Beacon Wallet** | Real incoming-request handling (approve → confirm → sign/respond), kept protocol-generic | **Fixed 2026-10-16**: `perform_permission_confirm()` was substituting an address for the public key; now calls a real `wallet_get_active_public_key()` and fails cleanly (not silently wrong) if no signer is active |
+| **1-bit Art** | Pure stub — zero lines of code, `app_entry_stub_art()` only | In progress 2026-10-16 — see below |
 | **Settings** | Real for 10 of 12 rows (Device Name, Profiles, Lock/Passcode, Wi-Fi, About, Import Recovery, RPC Node, Messenger Contract, Name Registry, Network) | Storage and Services rows are explicit stubs — "genuinely blocked on backend pieces that don't exist yet" |
-| **Scanner** | Orphaned — 417 lines, still has real tests (`test_scanner.c`, `test_scanner_entrypoints.c`), but not referenced anywhere in `linux_shim.c`'s app registry since Explorer superseded it | Real cleanup debt: either remove it and its tests, or document explicitly why it's being kept around unreferenced |
 | **Snake** | Real — reachable from Settings' About screen by design, not a top-level grid app | No open gap |
+
+**Scanner removed 2026-10-16** (was: orphaned, 417 lines, tested but unreferenced since Explorer superseded it — the Owner confirmed its presence was a wording mix-up, not an intentional keep). `scanner.c`/`.h`, its `STATUS.md`, and both its tests are gone; `scanner-app-build-notes.md` stays as historical record with a removed-banner.
 
 ### Core subsystem status
 
@@ -63,12 +64,12 @@ assumption. Full narrative: `docs/build-notes/project-status-2026-10-16.md`.
 
 ### Sequenced plan
 
-1. **Flash the STM32F412 signer** and re-verify the real signer test suite against it — this is the one gap that makes "hardware wallet" literally true instead of aspirational.
-2. **Wire the TCA8418 keypad** — turns every "confirmed via synthetic uinput" result this session into a real, hands-on-the-device result.
-3. **Install and boot the systemd kiosk service for real** — closes the gap between "the binary runs when I SSH in and launch it" and "the device actually boots into this."
-4. **Fix the Beacon Wallet pubkey fallback bug** — small, specific, already found and flagged, cheap to close.
-5. **Decide Scanner's fate** — remove or justify keeping orphaned code with its own test suite.
-6. **Build 1-bit Art** (or formally re-defer it) — unblocks Camera's save/mint handoff.
+1. ~~Fix the Beacon Wallet pubkey fallback bug~~ — **done 2026-10-16.**
+2. ~~Decide Scanner's fate~~ — **removed 2026-10-16.**
+3. **Flash the STM32F412 signer** and re-verify the real signer test suite against it — this is the one gap that makes "hardware wallet" literally true instead of aspirational.
+4. **Wire the TCA8418 keypad** — turns every "confirmed via synthetic uinput" result this session into a real, hands-on-the-device result.
+5. **Install and boot the systemd kiosk service for real** — closes the gap between "the binary runs when I SSH in and launch it" and "the device actually boots into this."
+6. **Build 1-bit Art** (in progress 2026-10-16 — 1-bit *and* 8-bit color depth modes, see the app's own build note once it exists) — unblocks Camera's save/mint handoff.
 7. **Wire the camera sensor**, **re-confirm WiFi from cold boot**, **round-trip Messenger through a real Matrix homeserver** — hardware/network confirmations now realistically possible given tonight's access, not blocked on anything structural.
 8. Everything in the existing "Deferred / post-launch tier" below stays deferred — this list is about closing what's already in scope, not expanding scope.
 

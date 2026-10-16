@@ -33,6 +33,11 @@ void wallet_set_active_signer(const tezos_mock_signer_t *signer);
    showing, but a real API shouldn't just assume). */
 bool wallet_get_active_address(char *out, size_t cap);
 
+/* The real public key (edpk...), not the address (tz1...) -- see
+   wallet.c for why these were being conflated and why that was wrong.
+   Same "not active yet" convention as wallet_get_active_address. */
+bool wallet_get_active_public_key(char *out, size_t cap);
+
 /* Signs `forged_bytes` (appends the signature in place, same convention
    as tezos_mock_signer_sign) using whichever signer is currently
    active -- the dev test seed, or a real imported/unlocked one. This is

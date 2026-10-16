@@ -1,5 +1,12 @@
 # Scanner App — Build Notes
 
+> **Removed 2026-10-16.** Explorer superseded Scanner's capability
+> generically (see `explorer-app-build-notes.md`); `scanner.c`/`.h` and
+> its tests stayed in the tree afterward, unreferenced, by mistake, not
+> decision. Code deleted; this document stays as historical record of
+> the real design work below, which is accurate for what was built, not
+> for what currently exists in `src/`.
+
 ## Status: real, verified where the underlying pieces are standard-based; hand-rolled and non-interoperable at the QR schema level (see below)
 
 The entire spec for this app, from the moment it entered the app suite

@@ -63,7 +63,6 @@ CORE_ENGINE="$CORE_DIR/tezos_core.c $CORE_DIR/tezos_gfx.c $CORE_DIR/tezos_fonts.
 APP_WALLET="$APPS_DIR/wallet/wallet.c $CORE_DIR/tezos_address_book.c $CHAIN_DIR/tezos_tez_domain.c"
 APP_SETTINGS="$APPS_DIR/settings/settings.c $APPS_DIR/settings/import_recovery.c $CHAIN_DIR/tezos_wifi.c $APPS_DIR/snake/snake.c"
 APP_CAMERA="$APPS_DIR/camera/camera.c $APPS_DIR/camera/camera_pipeline.c $APPS_DIR/beacon_wallet/beacon_wallet.c"
-APP_SCANNER="$APPS_DIR/scanner/scanner.c"
 APP_EXPLORER="$APPS_DIR/explorer/explorer.c"
 APP_MESSENGER="$APPS_DIR/messenger/messenger.c"
 APP_GALLERY="$APPS_DIR/gallery/gallery.c $APPS_DIR/camera/camera_pipeline.c $CORE_DIR/tezos_image_decode.c"
@@ -174,8 +173,6 @@ EXTRA_LIBS="-lqrencode -lzbar -lcurl -lcjson $(pkg-config --cflags --libs libsod
 run_test "test_camera_capture_flow" test_camera_capture_flow.c $APP_CAMERA $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_BEACON $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c
 
 EXTRA_LIBS="-lqrencode -lzbar -lcjson -lcurl $(pkg-config --cflags --libs libsodium)"
-run_test "test_scanner" test_scanner.c $APP_SCANNER $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c
-run_test "test_scanner_entrypoints" test_scanner_entrypoints.c $APP_SCANNER $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c
 run_test "test_explorer_ui" test_explorer_ui.c $APP_EXPLORER $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c
 run_test "test_explorer_call" test_explorer_call.c $APP_EXPLORER $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c
 run_test "test_messenger_build_value" test_messenger_build_value.c $APP_MESSENGER $APP_WALLET $APP_SETTINGS $CORE_ENGINE $CHAIN_CORE $CHAIN_NET $CHAIN_DIR/tezos_rpc.c $CHAIN_DIR/tezos_store.c

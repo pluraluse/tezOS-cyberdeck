@@ -63,6 +63,17 @@ bool wallet_get_active_address(char *out, size_t cap) {
     return tezos_mock_signer_address_b58(&g_wallet_signer, out, cap);
 }
 
+/* The real public key (edpk...), not the address (tz1...) -- these are
+   not interchangeable. Added because beacon_wallet.c's permission
+   response needs the real public key and was wrongly substituting
+   wallet_derive_account_address()'s result (an address) for it,
+   address-shaped data standing in for pubkey-shaped data. See
+   docs/build-notes/beacon-wallet-app-build-notes.md. */
+bool wallet_get_active_public_key(char *out, size_t cap) {
+    if (!g_signer_ready) return false;
+    return tezos_mock_signer_public_key_b58(&g_wallet_signer, out, cap);
+}
+
 bool wallet_sign_operation(tezos_bytes_t *forged_bytes, char *sig_out, size_t sig_cap) {
     if (!g_signer_ready) return false;
     return tezos_mock_signer_sign(&g_wallet_signer, forged_bytes, sig_out, sig_cap);

@@ -26,7 +26,7 @@ other self-tracking docs fixed in the same pass.
 | [beacon-wallet-app-build-notes.md](./beacon-wallet-app-build-notes.md) | The standalone Beacon Wallet app — real incoming-request handling, kept protocol-generic rather than branded as any specific wallet |
 | [messenger-app-build-notes.md](./messenger-app-build-notes.md) | Teia messaging contracts: Channels, Token Gated Chat (solves builders'-channel gating), Poll/Token Comments — sourced from both the live frontend and an unmerged upstream PR, with the discrepancy between them flagged |
 | [camera-app-build-notes.md](./camera-app-build-notes.md) | Camera app: Scan mode vs. Capture mode, resolution presets, color-depth modes, box-average downsample pipeline, minting integration — no real camera sensor wired yet |
-| [scanner-app-build-notes.md](./scanner-app-build-notes.md) | The original Scanner app (QR scan → decode → forge/sign/broadcast) — superseded by Explorer; `scanner.c` is still in the tree and still tested, but not wired into the app registry |
+| [scanner-app-build-notes.md](./scanner-app-build-notes.md) | The original Scanner app (QR scan → decode → forge/sign/broadcast) — superseded by Explorer. **Code removed 2026-10-16** (was orphaned-but-kept by mistake); this note stays as historical record only |
 | [explorer-app-build-notes.md](./explorer-app-build-notes.md) | Explorer: address entry, entrypoint/holdings browsing, consolidates Scanner's capability generically |
 | [discover-app-build-notes.md](./discover-app-build-notes.md) | Discover: address browsing, bookmarking, holdings with images |
 | [discover-suggested-list-build-notes.md](./discover-suggested-list-build-notes.md) | Discover's Suggested list, cross-verified routing to real addresses |

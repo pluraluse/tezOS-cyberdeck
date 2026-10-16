@@ -47,23 +47,35 @@ two documented examples of exactly that mistake and how it was caught).
 
 ### Current real/placeholder split (verify this yourself, don't just trust it)
 
+**Updated 2026-10-16** — this section had gone badly stale (claimed
+Explorer/Gallery/Discover/Messenger were all unimplemented stubs, no
+storage layer, no WiFi UI, none of which was still true; see
+`docs/build-notes/project-status-2026-10-16.md` for the full
+re-verification pass this was caught in). Re-checked directly against
+the current source tree, not carried forward from memory.
+
 **Real, verified, working:**
 - Core render engine, window manager, input state machine (`src/core/`)
 - Full chain layer: Base58, operation forging, ed25519 signing, BIP39/SLIP-10
   HD derivation, Michelson/Micheline encoding, TZKT reads, RPC operation
   broadcasting, Beacon (TZIP-10) crypto/message/QR/pairing, a spec-verified
   Matrix client (`src/chain/`)
-- Three real apps: Wallet, Settings, Camera (`src/apps/`)
+- Eight real apps: Wallet, Explorer, Gallery, Discover, Messenger, Camera
+  (software pipeline; no real sensor wired), Beacon Wallet, Settings
+  (10 of 12 rows — Storage/Services genuinely stubbed, see below)
+  (`src/apps/`) — see `ROADMAP.md`'s "Path to v1.0" section for the
+  real per-app gap list, not just real-vs-stub
+- A real encrypted key store (`tezos_store.c`) — device name, address
+  book, and multi-account profiles all persist across a restart
+- A real Settings Wi-Fi screen (scan/select/connect via `nmcli`)
+- Snake — real, reachable from Settings' About screen, not top-level
 
 **Explicit placeholders (by design, clearly marked in code comments):**
 - Signer is software-only (`tezos_mock_signer_*`) — no real STM32/Pico
   firmware exists, no physical confirmation step exists
-- Explorer, Scanner, Gallery, Discover, Messenger, 1-bit Art apps are all
-  unimplemented stub screens
-- No storage layer — nothing persists across a restart
-- No WiFi configuration UI
-- RPC node URL in `wallet.c` (`DEV_RPC_NODE`) is a placeholder, not a
-  production configuration mechanism
+- 1-bit Art is an unimplemented stub screen (the one genuinely empty app)
+- Settings' Storage and Services rows — genuinely blocked on backend
+  pieces that don't exist yet
 
 ---
 

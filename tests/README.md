@@ -1,10 +1,12 @@
 # Tests
 
 A permanent, reusable test suite covering everything verified throughout
-this project's development — **72 test suites, 679 individual checks**
-(re-counted and confirmed 2026-10-16 — see
-`docs/build-notes/project-status-2026-10-16.md`; this file had drifted to
-claiming 30 and then 17 suites elsewhere in itself before that pass).
+this project's development — **70 test suites, 670 individual checks**
+(re-counted and confirmed 2026-10-16, then again same day after removing
+`test_scanner.c`/`test_scanner_entrypoints.c` along with the now-orphaned
+Scanner app — see `docs/build-notes/project-status-2026-10-16.md`; this
+file had drifted to claiming 30 and then 17 suites elsewhere in itself
+before that pass).
 Not scratch files: these ship with the repo so anyone (including you,
 on real hardware) can re-verify the same things that were checked during
 development.
@@ -14,7 +16,7 @@ different Debian development environment with no other context on this
 project, ran this exact suite via `COMPILE-AND-TEST-PLAN.md` and got
 `21 passed, 0 failed` — matching this repo's own claim exactly at that
 point in the project, not just "probably works elsewhere." The suite has
-grown substantially since (21 → 72 suites) as more apps and chain
+grown substantially since (21 → 70 suites) as more apps and chain
 functionality were built and verified; `COMPILE-AND-TEST-PLAN.md` itself
 stays current (no separate v2 file — there isn't one) and is the one to
 re-run for a fresh independent check. The same original session also
@@ -40,7 +42,7 @@ sudo apt install -y build-essential libsodium-dev \
 ./tests/run_all_tests.sh
 ```
 
-One command, builds and runs all 72 suites, prints a clear pass/fail
+One command, builds and runs all 70 suites, prints a clear pass/fail
 summary at the end.
 
 ## Worth knowing before you run this on a Pi
@@ -92,8 +94,6 @@ and still matter regardless.
 | `test_camera_scan.c` | Camera Scan Mode's real QR pipeline (via a "simulate scan" trigger, since no real camera driver exists yet) |
 | `test_camera_pipeline.c` | Camera Capture Mode's real image pipeline — box-average downsampling (proven different from nearest-neighbor), programmatically-generated Bayer dither matrices, all 4 color-depth modes |
 | `test_camera_capture_flow.c` | Capture Mode's real end-to-end UI flow — mode-select, cycling resolution/depth settings, triggering a real capture, viewing the result |
-| `test_scanner.c` | Scanner's real end-to-end flow — QR scan (real libqrencode/zbar), decode, confirmation popup, real forge+sign+broadcast attempt via Wallet's active identity |
-| `test_scanner_entrypoints.c` | Scanner's entrypoint-verification step — browsing a decoded call's real contract entrypoints, and the navigation-correctness check that caught a real bug (BACK from the entrypoints view was exiting Scanner entirely instead of returning to the decoded call) |
 | `test_messenger_build_value.c` | Structural, level-by-level verification of the hand-built `write_message` value against its real confirmed type — caught a real stack-use-after-return bug under AddressSanitizer that a normal run didn't surface |
 | `test_messenger_ui.c` | Messenger's real compose → confirm → send UI flow, same real-navigation-depth pattern as Scanner's own end-to-end test |
 | `test_messenger_inbox_ui.c` | The real Inbox's list → detail → back navigation, tested under AddressSanitizer; uses a test-only injection hook to verify with actual message content since this sandbox can't reach live network data |

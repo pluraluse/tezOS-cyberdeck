@@ -82,9 +82,9 @@ static void perform_permission_confirm(beacon_wallet_state_t *st) {
         st->response_ok = false; st->state = BW_RESPONSE_RESULT; return;
     }
     char pubkey[128];
-    if (!wallet_derive_account_address(0, pubkey, sizeof pubkey)) {
-        strcpy(pubkey, address); /* placeholder -- real gap, see build notes:
-            this needs the real PUBLIC KEY, not another address */
+    if (!wallet_get_active_public_key(pubkey, sizeof pubkey)) {
+        strcpy(st->response_error, "no active signer -- open Wallet first");
+        st->response_ok = false; st->state = BW_RESPONSE_RESULT; return;
     }
 
     char *json_out = NULL;
