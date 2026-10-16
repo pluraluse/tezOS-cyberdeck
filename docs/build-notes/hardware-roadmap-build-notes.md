@@ -49,3 +49,17 @@ convenience of the current setup.
 performance is actually a limiting factor for something real (not a
 guess). Build Stage 1 now; treat the CM migration and CM4-vs-CM5 choice as
 a later decision driven by an actual observed bottleneck.
+
+**One real, already-identified driver for Stage 2, distinct from a
+performance bottleneck**: running the genuine Kukai wallet
+(`wallet.kukai.app`, unmodified, properly attributed — see
+`ROADMAP.md`'s "Deferred / post-launch tier") as a selectable
+software-wallet option needs a real kiosk browser, and every realistic
+option for that is built around GPU-accelerated DRM/KMS or Wayland
+output. The confirmed Stage 1 display path
+(`dtoverlay=fbtft,ili9481,...`) is a non-accelerated SPI framebuffer —
+not a speed problem a faster CM4/CM5 chip alone fixes, a missing
+display-technology requirement. CM4/CM5 both have real VideoCore
+GPU/DRM output, so either would clear this specific bar; this doesn't
+settle CM4-vs-CM5, just adds a second, non-performance reason Stage 2
+is worth revisiting eventually.

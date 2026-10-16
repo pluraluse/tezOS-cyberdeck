@@ -762,6 +762,25 @@ AddressSanitizer.
 - Stage 2 hardware: Compute Module migration (CM4 vs CM5 — see hardware
   roadmap notes), only once a real performance bottleneck is observed on
   the Zero 2 W.
+- **Genuine Kukai wallet as a selectable software-wallet option** — real
+  goal, explicitly *not* a reskin: must be Kukai's actual, live,
+  officially-hosted web app (`wallet.kukai.app`) running unmodified in a
+  real browser, with Kukai's own branding — not a copy of their
+  Apache-2.0-licensed code (`kukai-wallet/kukai`) rebuilt into this
+  project, which would need ongoing attribution/NOTICE maintenance and
+  would drift from their real app the moment it's forked. **Rejected
+  approach, explicitly (Owner, 2026-10-15):** using Kukai's code without
+  attribution, or presenting it as something anyone could put their own
+  logo on. Investigated whether a kiosk browser is feasible on the
+  *current* Pi Zero 2 W + SPI panel: no, and not just a RAM/CPU
+  tightness problem — the confirmed working display path
+  (`dtoverlay=fbtft,ili9481,...`, see `docs/build-notes/
+  display-bringup-build-notes.md`) is a slow, non-GPU-accelerated SPI
+  framebuffer, and every realistic kiosk-browser option (even the
+  lightest, WPE WebKit + Cog) is built around GPU-accelerated DRM/KMS
+  or Wayland output — a categorically different display technology,
+  not a bigger version of the same one. Gated on Stage 2 (Compute
+  Module, real DRM/GPU output) — revisit once that lands, not before.
 - Beacon (TZIP-10) camera-based QR pairing, and the Matrix transport it
   needs, are no longer deferred — both real, verified, and out of this
   section (see M8/M9 status above and `docs/build-notes/beacon-build-notes.md`
