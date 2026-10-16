@@ -3,6 +3,77 @@
 Organic bring-up: each milestone must provably work before the next one
 depends on it. Don't skip ahead.
 
+## Path to v1.0 — what's left, app by app (2026-10-16)
+
+The M0–M11 milestone numbering below tracks *bring-up sequence*, not
+*completion* — a lot has been built ahead of its milestone slot (see
+each phase's own notes). This section is the complementary view: for
+each app and subsystem, real current status and exactly what closes it
+out, grounded in the actual source tree and the real, re-verified test
+suite (72 suites, 679 checks, 0 failures — see `tests/README.md`), not
+assumption. Full narrative: `docs/build-notes/project-status-2026-10-16.md`.
+
+### The three real gaps that actually block "done," in priority order
+
+1. **The hardware signer has never been flashed.** The wire protocol
+   (ISO 7816-4 APDU framing, session layer, RNG safety) is real, tested,
+   cross-compiled for the STM32F412 — but the device still runs on
+   `tezos_mock_signer_*`, explicitly marked *"NEVER use with a seed
+   protecting real funds."* This is the actual trust boundary. Nothing
+   else on this list matters if this doesn't close.
+2. **No real keypad or touch hardware.** `linux_shim.c`'s `evdev` paths
+   are still placeholders (M2) — tonight's navigation was driven by a
+   synthetic `/dev/uinput` keyboard (`tools/uinput-keypad/`), not real
+   hardware. TCA8418 has a mainline kernel driver (confirmed, M2's own
+   notes), it just isn't wired and loaded yet.
+3. **No real camera sensor.** Camera's full software pipeline (Scan
+   mode, Capture mode, dither, 4 color-depth modes) is built and tested
+   — against no real sensor. The screen literally says "no real camera
+   sensor here" where live preview would go.
+
+### Per-app status
+
+| App | Status | What closes it out |
+|---|---|---|
+| **Wallet** | Real — forge/sign/broadcast, balance, address book, `.tez` domains, saved contacts, send flow, all verified against Taquito vectors | Domain/TZKT Info sub-pages are still placeholder pages (no action wired yet). Otherwise closes when the hardware signer does (gap #1 above) |
+| **Explorer** | Real — address entry, entrypoint/holdings browsing, consolidates the old Scanner capability generically | No open gap found this pass |
+| **Gallery** | Real — owned-token query, real image decode, pannable 1:1 viewer | No open gap found this pass |
+| **Discover** | Real — address browsing, bookmarking, cross-verified Suggested list | No open gap found this pass |
+| **Messenger** | Real — Channels, Token Gated Chat, Poll/Token Comments, compose/inbox UI | Never round-tripped through a real Matrix homeserver (needs real network access this project's dev sandbox didn't have) — worth doing now that WiFi is confirmed working on real hardware |
+| **Camera** | Real software pipeline — Scan mode, Capture mode, box-average downsample, 4 color-depth modes | No real sensor wired (gap #3). Also: Capture Mode's scroll interaction for the two oversized presets (800×480, 640×480) isn't implemented; save/mint handoff is blocked on 1-bit Art not existing yet |
+| **Beacon Wallet** | Real incoming-request handling (approve → confirm → sign/respond), kept protocol-generic | One flagged correctness gap: `perform_permission_confirm()` falls back to using the account *address* as the *public key* if derivation fails — needs the real public key, not a same-shaped stand-in (see `beacon_wallet.c:86`) |
+| **1-bit Art** | Pure stub — zero lines of code, `app_entry_stub_art()` only | Not started. Also blocks Camera's save/mint handoff (above) |
+| **Settings** | Real for 10 of 12 rows (Device Name, Profiles, Lock/Passcode, Wi-Fi, About, Import Recovery, RPC Node, Messenger Contract, Name Registry, Network) | Storage and Services rows are explicit stubs — "genuinely blocked on backend pieces that don't exist yet" |
+| **Scanner** | Orphaned — 417 lines, still has real tests (`test_scanner.c`, `test_scanner_entrypoints.c`), but not referenced anywhere in `linux_shim.c`'s app registry since Explorer superseded it | Real cleanup debt: either remove it and its tests, or document explicitly why it's being kept around unreferenced |
+| **Snake** | Real — reachable from Settings' About screen by design, not a top-level grid app | No open gap |
+
+### Core subsystem status
+
+| Subsystem | Status | What closes it out |
+|---|---|---|
+| Hardware signer (STM32F412) | Wire protocol real/tested/cross-compiled; chip never flashed | Flash it, then re-run the signer test suite against real hardware, not the software simulation |
+| Display | **Real, confirmed on hardware** (this session) — `fbtft,ili9481`, fbdev shim, color/mirror fixed in software | Final mounting orientation still deferred to enclosure design, not a driver question anymore |
+| Keypad (TCA8418) | Mainline driver confirmed to exist; not wired | Physical wiring + device-tree overlay load, then point `linux_shim.c`'s hardcoded `evdev` path at the real device (same pattern `tools/uinput-keypad/README.md` documents for the synthetic stand-in) |
+| Touch (XPT2046) | Not implemented at all — keypad-first per stated input priority | Not started; lower priority than keypad by explicit project decision |
+| Camera sensor | Not wired | Physical hardware task, not software |
+| WiFi | **Confirmed working** (this session) — `wlan0` up, real IP, real network calls made from Wallet | Re-confirm from a full cold boot, not just this session's warm state (flagged, not yet done) |
+| Headless access (USB gadget / UART) | `g_serial` console is what every real-hardware test this session actually used — genuinely working, not just "boots" | The open items in `usb-gadget-build-notes.md` (UART wiring, `g_ether` networking) are arguably lower priority now that `g_serial` + WiFi both work |
+| Boot-to-kiosk systemd service | `scripts/install-tezos-service.sh` exists, fixed this session (dropped stale libdrm) | Never actually installed and booted via systemd on real hardware — every test this session ran the binary manually over SSH, not via the real boot path |
+| Kukai software wallet (genuine, kiosk browser) | Explicitly deferred to Stage 2 hardware (real GPU/DRM needed, confirmed absent on Stage 1) | Not actionable until Stage 2 — see `hardware-roadmap-build-notes.md` |
+
+### Sequenced plan
+
+1. **Flash the STM32F412 signer** and re-verify the real signer test suite against it — this is the one gap that makes "hardware wallet" literally true instead of aspirational.
+2. **Wire the TCA8418 keypad** — turns every "confirmed via synthetic uinput" result this session into a real, hands-on-the-device result.
+3. **Install and boot the systemd kiosk service for real** — closes the gap between "the binary runs when I SSH in and launch it" and "the device actually boots into this."
+4. **Fix the Beacon Wallet pubkey fallback bug** — small, specific, already found and flagged, cheap to close.
+5. **Decide Scanner's fate** — remove or justify keeping orphaned code with its own test suite.
+6. **Build 1-bit Art** (or formally re-defer it) — unblocks Camera's save/mint handoff.
+7. **Wire the camera sensor**, **re-confirm WiFi from cold boot**, **round-trip Messenger through a real Matrix homeserver** — hardware/network confirmations now realistically possible given tonight's access, not blocked on anything structural.
+8. Everything in the existing "Deferred / post-launch tier" below stays deferred — this list is about closing what's already in scope, not expanding scope.
+
+---
+
 ## M0 — Base image bring-up
 - Raspberry Pi OS Lite on the Pi Zero 2 W (fast bring-up; leaner custom
   image comes later, once software is proven).

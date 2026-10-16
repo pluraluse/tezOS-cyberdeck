@@ -1,7 +1,10 @@
 # Tests
 
 A permanent, reusable test suite covering everything verified throughout
-this project's development — 72 test suites, 685 individual checks.
+this project's development — **72 test suites, 679 individual checks**
+(re-counted and confirmed 2026-10-16 — see
+`docs/build-notes/project-status-2026-10-16.md`; this file had drifted to
+claiming 30 and then 17 suites elsewhere in itself before that pass).
 Not scratch files: these ship with the repo so anyone (including you,
 on real hardware) can re-verify the same things that were checked during
 development.
@@ -10,14 +13,18 @@ development.
 different Debian development environment with no other context on this
 project, ran this exact suite via `COMPILE-AND-TEST-PLAN.md` and got
 `21 passed, 0 failed` — matching this repo's own claim exactly at that
-point in the project, not just "probably works elsewhere." (The suite
-has grown since — 30 suites now, not 21 — see
-`COMPILE-AND-TEST-PLAN-v2.md` for the current version of that same
-independently-reproducible plan.) The same session also independently
-confirmed the real target binary (`src/shim-linux/linux_shim.c`) builds
-clean at `-O2` and fails gracefully with the correct "DRM init failed"
-message when run without real display hardware. See `ROADMAP.md`'s M3
-section for the full note.
+point in the project, not just "probably works elsewhere." The suite has
+grown substantially since (21 → 72 suites) as more apps and chain
+functionality were built and verified; `COMPILE-AND-TEST-PLAN.md` itself
+stays current (no separate v2 file — there isn't one) and is the one to
+re-run for a fresh independent check. The same original session also
+independently confirmed the real target binary
+(`src/shim-linux/linux_shim.c`) builds clean at `-O2` — see
+`ROADMAP.md`'s M3 section for that note, and
+`docs/build-notes/linux-shim-fbdev-rewrite-build-notes.md` /
+`project-status-2026-10-16.md` for the later real-hardware runtime
+verification (the original note's "fails gracefully with no `/dev/dri/*`"
+line is about the old, since-replaced libdrm backend).
 
 `fixtures/nmcli` is a mock `nmcli` binary (a bash script, checked into
 the repo) standing in for real NetworkManager — see `test_wifi.c`/
@@ -27,13 +34,13 @@ the repo) standing in for real NetworkManager — see `test_wifi.c`/
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential libdrm-dev libsodium-dev \
+sudo apt install -y build-essential libsodium-dev \
     libcurl4-openssl-dev libcjson-dev libqrencode-dev libzbar-dev pkg-config
 
 ./tests/run_all_tests.sh
 ```
 
-One command, builds and runs all 17 suites, prints a clear pass/fail
+One command, builds and runs all 72 suites, prints a clear pass/fail
 summary at the end.
 
 ## Worth knowing before you run this on a Pi
