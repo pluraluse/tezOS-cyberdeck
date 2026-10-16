@@ -21,9 +21,9 @@ static void splash_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d
     splash_state_t *st = (splash_state_t *)self->app_state;
     tezos_draw_rect(fb, d, 0, 0, fb->width, fb->height, TEZOS_BG);
 
-    int total_w = tezos_text_width(SPLASH_TEXT, &TEZOS_FONT_HERO);
+    int total_w = tezos_text_width(SPLASH_TEXT, &TEZOS_FONT_SPLASH_LOGO);
     int start_x = (fb->width - total_w) / 2;
-    int y = (fb->height - TEZOS_FONT_HERO.line_height) / 2;
+    int y = (fb->height - TEZOS_FONT_SPLASH_LOGO.line_height) / 2;
 
     /* Sweep travels from just left of the word to just right of it, so
        the gleam has a clean entry and exit rather than snapping on/off
@@ -44,13 +44,13 @@ static void splash_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d
     int x = start_x;
     for (const char *p = SPLASH_TEXT; *p; p++) {
         char ch[2] = { *p, '\0' };
-        int w = tezos_text_width(ch, &TEZOS_FONT_HERO);
+        int w = tezos_text_width(ch, &TEZOS_FONT_SPLASH_LOGO);
         int char_center = x + w / 2;
         int dist = char_center - sweep_x;
         if (dist < 0) dist = -dist;
         bool lit = !sweep_active || dist < SPLASH_GLEAM_HALFWIDTH;
         tezos_color_t color = lit ? TEZOS_CYAN : TEZOS_PRIMARY;
-        tezos_draw_text(fb, d, x, y, ch, &TEZOS_FONT_HERO, color);
+        tezos_draw_text(fb, d, x, y, ch, &TEZOS_FONT_SPLASH_LOGO, color);
         x += w;
     }
 
@@ -61,7 +61,7 @@ static void splash_render(tezos_screen_t *self, tezos_fb_t *fb, tezos_dirty_t *d
        sign rather than a static glow. */
     if (sweep_active) {
         int beam_x = sweep_x - 2;
-        int beam_h = TEZOS_FONT_HERO.line_height + 28;
+        int beam_h = TEZOS_FONT_SPLASH_LOGO.line_height + 28;
         int beam_y = y - 14;
         if (beam_x >= 0 && beam_x + 4 <= fb->width) {
             tezos_draw_rect(fb, d, beam_x, beam_y, 4, beam_h, TEZOS_CYAN);

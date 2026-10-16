@@ -320,6 +320,13 @@ has one settled shape to build into, not because anything's inside yet.
 - **Software**: MIT (`LICENSE`) — matches the license of the Tezos ecosystem
   tooling this project builds on (Teia's `teia-ui` is also MIT).
 - **Hardware designs** (PCB, enclosure): CERN-OHL-P — see `LICENSE-HARDWARE.md`.
+- **Fonts**: CC0 (public domain) — MonoMEK, MEK-Dings, and GROUT Display,
+  all by **Michael Alexander (MEK.txt)**. tezOS's entire visual voice —
+  every line of body text, every icon, and the boot splash wordmark — runs
+  on these three. Offered freely, including for long-term projects like
+  this one; thank you, Michael.
+  [linktr.ee/michaelmicasso](https://linktr.ee/michaelmicasso) ·
+  [objkt.com/@micasso/created](https://objkt.com/@micasso/created)
 
 ## Where to start
 
