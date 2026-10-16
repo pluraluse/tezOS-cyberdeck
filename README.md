@@ -75,8 +75,6 @@ are permanent; if something changes, revisit and update this list.
 - **Multi-chain support** — staying Tezos-native.
 - **Multi-chain hardware wallet ambitions** — scope is Tezos signing,
   done well and audited, not competing with Ledger/Trezor's broader coverage.
-- **Solving affordability through token price** — the actual levers are
-  fiat/stablecoin pricing and BOM cost reduction.
 - **Phone/Android hardware support** — considered (ESP32 and Android
   shims both came up), dropped in favor of Linux SBCs only for now — see
   `docs/build-notes/hardware-roadmap-build-notes.md`.
