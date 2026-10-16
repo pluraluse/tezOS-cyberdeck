@@ -1,20 +1,44 @@
 /*
- * tezOS Linux platform shim — DRM/KMS display + evdev input.
+ * tezOS Linux platform shim — fbdev display + evdev input.
  *
- * This is the ONE piece that's genuinely untestable in a dev sandbox
- * (no real DRM device, no real Pi hardware here) — everything else in
- * src/core/ was verified by actually running it. This file compiles
- * cleanly against real libdrm headers (checked: `apt install libdrm-dev`,
- * `gcc ... $(pkg-config --cflags --libs libdrm)`), but the runtime
- * behavior below needs to be verified on the actual Pi Zero 2 W.
+ * Display backend history: this was originally written against libdrm
+ * (DRM/KMS), on the assumption that the `piscreen` overlay would bring up
+ * a modern tinydrm-class DRM device. Real hardware bring-up
+ * (docs/build-notes/display-bringup-build-notes.md) found otherwise:
+ * `piscreen` never worked at all, and the overlay that *does* work on
+ * this board (`dtoverlay=fbtft,ili9481,...`) uses the Linux kernel's
+ * legacy `fbtft` staging driver, which creates a plain fbdev device
+ * (`/dev/fb1`) — there is no DRM device node on this configuration at
+ * all. Rewritten against fbdev ioctls accordingly. Everything above this
+ * backend (logical/physical canvas split, letterboxing, dirty-rect
+ * bounding-box reduction, the boot splash hand-off) needed no changes —
+ * it was already built against the panel-agnostic `tezos_fb_t`.
+ *
+ * Flip is implemented with `write()`/`pwrite()`, not `mmap()` — every
+ * test pattern during bring-up was pushed to the panel with a plain
+ * `write()` to the fbdev character device and landed correctly;
+ * `mmap()`+deferred-io timing on this specific staging driver was never
+ * validated, so this doesn't assume it works.
+ *
+ * Color channel order is handled here, in software, not by a devicetree
+ * `bgr` flag: bring-up found the flag's effect inconsistent across
+ * reboots on the same config (most likely a marginal breadboard
+ * connection, never confirmed, not chased further — see the build note's
+ * "design around it" decision). Swapping R/B at flip time is a software
+ * guarantee regardless of what the flag or a flaky wire do.
+ *
+ * Mounting orientation (which physical corner is "up") is explicitly
+ * NOT decided here — buffer coordinate (0,0) is a fixed reference point,
+ * not asserted to be a specific named corner, per the same build note.
+ * That's a mounting/enclosure decision for later.
  *
  * What to check first on real hardware, in order:
- *   1. `ls /dev/dri/` shows a card after the piscreen overlay loads
- *   2. This program's drm_init() successfully finds a connected
- *      connector and a dumb-buffer pixel format that matches
- *      DRM_FORMAT_RGB565 (see the format-negotiation note below —
- *      if the panel driver only supports XRGB8888 dumb buffers, a
- *      conversion step is needed before flip(), not yet implemented here)
+ *   1. `cat /sys/class/graphics/fb1/name` shows `fb_ili9481` (confirms
+ *      the expected driver bound, not a different fbN)
+ *   2. This program's fbdev_init() opens /dev/fb1 and reads back
+ *      320x480 at 16bpp via FBIOGET_VSCREENINFO (the confirmed-working
+ *      bring-up configuration — a different bpp means the config drifted
+ *      and the swap math below needs revisiting)
  *   3. `cat /proc/bus/input/devices` shows the TCA8418 keypad as a
  *      standard evdev device once the device-tree overlay (see
  *      hardware/pinouts/tca8418-overlay-notes.md) is loaded
@@ -22,7 +46,8 @@
  * Build (on the Pi):
  *   gcc -O2 -Wall -Wextra -std=c11 -o tezos_shim linux_shim.c \
  *       ../core/tezos_core.c ../core/tezos_gfx.c ../core/tezos_fonts.c \
- *       ../core/tezos_widgets.c -I../core $(pkg-config --cflags --libs libdrm)
+ *       ../core/tezos_widgets.c -I../core
+ * (no libdrm dependency anymore)
  */
 #define _GNU_SOURCE /* for O_CLOEXEC */
 #include "../core/tezos_core.h"
@@ -49,29 +74,24 @@
 #include <unistd.h>
 #include <poll.h>
 #include <time.h>
-#include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <linux/input.h>
-#include <xf86drm.h>
-#include <xf86drmMode.h>
-#include <drm/drm_fourcc.h>
+#include <linux/fb.h>
 
-/* ---------- DRM display backend ---------- */
+/* ---------- fbdev display backend ---------- */
 
 typedef struct {
     int fd;
-    drmModeConnector *conn;
-    drmModeModeInfo mode;
-    uint32_t crtc_id;
-    uint32_t fb_id;
-    uint32_t handle;
-    uint32_t pitch;
-    uint64_t size;
-    uint8_t *map;
-    drmModeCrtc *saved_crtc; /* restore on exit, so a crash doesn't leave the display in a weird state */
-} drm_dev_t;
+    int width, height;
+    uint32_t line_length; /* bytes per row, from FBIOGET_FSCREENINFO --
+                              not assumed equal to width*2; a staging
+                              driver is as likely as not to pad rows */
+    uint16_t *row_buf;    /* scratch buffer, one row, R/B pre-swapped,
+                              reused every flip rather than allocated
+                              per-call */
+} fbdev_dev_t;
 
-static int drm_init(drm_dev_t *d, const char *node) {
+static int fbdev_init(fbdev_dev_t *d, const char *node) {
     memset(d, 0, sizeof(*d));
     d->fd = open(node, O_RDWR | O_CLOEXEC);
     if (d->fd < 0) {
@@ -79,119 +99,64 @@ static int drm_init(drm_dev_t *d, const char *node) {
         return -1;
     }
 
-    drmModeRes *res = drmModeGetResources(d->fd);
-    if (!res) {
-        fprintf(stderr, "drmModeGetResources failed: %s\n", strerror(errno));
+    struct fb_var_screeninfo vinfo;
+    struct fb_fix_screeninfo finfo;
+    if (ioctl(d->fd, FBIOGET_VSCREENINFO, &vinfo) < 0) {
+        fprintf(stderr, "FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
+        return -1;
+    }
+    if (ioctl(d->fd, FBIOGET_FSCREENINFO, &finfo) < 0) {
+        fprintf(stderr, "FBIOGET_FSCREENINFO failed: %s\n", strerror(errno));
         return -1;
     }
 
-    /* find the first connected connector — small panels driven by a
-       single tinydrm-style overlay typically expose exactly one */
-    for (int i = 0; i < res->count_connectors; i++) {
-        drmModeConnector *c = drmModeGetConnector(d->fd, res->connectors[i]);
-        if (c && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) {
-            d->conn = c;
-            break;
-        }
-        if (c) drmModeFreeConnector(c);
-    }
-    if (!d->conn) {
-        fprintf(stderr, "no connected connector with a valid mode found\n");
-        drmModeFreeResources(res);
-        return -1;
-    }
-    d->mode = d->conn->modes[0]; /* first advertised mode; for a fixed
-                                    panel this should be its native res */
-
-    /* find an encoder/CRTC for this connector */
-    drmModeEncoder *enc = NULL;
-    if (d->conn->encoder_id) enc = drmModeGetEncoder(d->fd, d->conn->encoder_id);
-    if (!enc) {
-        for (int i = 0; i < d->conn->count_encoders; i++) {
-            enc = drmModeGetEncoder(d->fd, d->conn->encoders[i]);
-            if (enc) break;
-        }
-    }
-    if (!enc) {
-        fprintf(stderr, "no encoder found for connector\n");
-        drmModeFreeResources(res);
-        return -1;
-    }
-    d->crtc_id = enc->crtc_id;
-    if (!d->crtc_id) {
-        /* fall back to the first CRTC in the resource list */
-        for (int i = 0; i < res->count_crtcs; i++) {
-            if (enc->possible_crtcs & (1 << i)) { d->crtc_id = res->crtcs[i]; break; }
-        }
-    }
-    drmModeFreeEncoder(enc);
-    if (!d->crtc_id) {
-        fprintf(stderr, "no usable CRTC found\n");
-        drmModeFreeResources(res);
-        return -1;
-    }
-    d->saved_crtc = drmModeGetCrtc(d->fd, d->crtc_id);
-    drmModeFreeResources(res);
-
-    /* Create a dumb buffer at RGB565 (16bpp) to match tezos_fb_t's
-       native format exactly — no per-frame pixel conversion needed.
-       NOTE: not all panel drivers support 16bpp dumb buffers; if
-       drm_mode_create_dumb fails or drmModeAddFB2 rejects
-       DRM_FORMAT_RGB565, the panel driver may only support XRGB8888 —
-       check dmesg for the specific rejection reason on real hardware. */
-    struct drm_mode_create_dumb creq = {0};
-    creq.width = d->mode.hdisplay;
-    creq.height = d->mode.vdisplay;
-    creq.bpp = 16;
-    if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq) < 0) {
-        fprintf(stderr, "DRM_IOCTL_MODE_CREATE_DUMB failed: %s\n", strerror(errno));
-        return -1;
-    }
-    d->handle = creq.handle;
-    d->pitch = creq.pitch;
-    d->size = creq.size;
-
-    if (drmModeAddFB2(d->fd, d->mode.hdisplay, d->mode.vdisplay, DRM_FORMAT_RGB565,
-                       (uint32_t[4]){d->handle,0,0,0}, (uint32_t[4]){d->pitch,0,0,0},
-                       (uint32_t[4]){0,0,0,0}, &d->fb_id, 0) < 0) {
-        fprintf(stderr, "drmModeAddFB2 failed (panel may not support RGB565 dumb buffers): %s\n", strerror(errno));
+    /* Fail loud, not silently wrong: this shim only knows how to drive a
+       16bpp RGB565 panel (tezos_fb_t's native format). A different value
+       here means the real on-device config.txt has drifted from the
+       confirmed bring-up configuration (docs/build-notes/
+       display-bringup-build-notes.md) and needs reconciling, not a
+       silent best-effort pixel conversion. */
+    if (vinfo.bits_per_pixel != 16) {
+        fprintf(stderr, "fbdev_init: expected 16bpp (RGB565), device reports %u bpp — "
+                        "config.txt has likely drifted from the confirmed bring-up config\n",
+                vinfo.bits_per_pixel);
         return -1;
     }
 
-    struct drm_mode_map_dumb mreq = {0};
-    mreq.handle = d->handle;
-    if (drmIoctl(d->fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) < 0) {
-        fprintf(stderr, "DRM_IOCTL_MODE_MAP_DUMB failed: %s\n", strerror(errno));
-        return -1;
-    }
-    d->map = mmap(0, d->size, PROT_READ | PROT_WRITE, MAP_SHARED, d->fd, mreq.offset);
-    if (d->map == MAP_FAILED) {
-        fprintf(stderr, "mmap failed: %s\n", strerror(errno));
-        return -1;
-    }
-    memset(d->map, 0, d->size);
-
-    if (drmModeSetCrtc(d->fd, d->crtc_id, d->fb_id, 0, 0, &d->conn->connector_id, 1, &d->mode) < 0) {
-        fprintf(stderr, "drmModeSetCrtc failed: %s\n", strerror(errno));
+    d->width = vinfo.xres;
+    d->height = vinfo.yres;
+    d->line_length = finfo.line_length;
+    d->row_buf = malloc((size_t)d->width * 2);
+    if (!d->row_buf) {
+        fprintf(stderr, "fbdev_init: out of memory allocating row buffer\n");
         return -1;
     }
 
-    printf("DRM init OK: %dx%d, pitch=%u, size=%llu\n",
-           d->mode.hdisplay, d->mode.vdisplay, d->pitch, (unsigned long long)d->size);
+    printf("fbdev init OK: %dx%d, line_length=%u\n", d->width, d->height, d->line_length);
     return 0;
 }
 
-/* Copies the software tezos_fb_t buffer into the mapped DRM dumb buffer.
-   Pitch may exceed width*2 bytes (row padding/alignment), so this
-   copies row by row rather than assuming a flat memcpy — a common bug
-   if the two happen to match on one panel but not another. */
-static void drm_flip(drm_dev_t *d, const tezos_fb_t *fb, const tezos_dirty_t *dirty) {
+/* RGB565 -> RGB565 with R and B swapped. See the file-top comment:
+   bring-up found the driver's `bgr` devicetree flag gave inconsistent
+   results across reboots on an identical config, so this guarantees
+   correct color order in software instead of trusting the flag. */
+static inline uint16_t rb_swap16(uint16_t c) {
+    uint16_t r = (c >> 11) & 0x1F;
+    uint16_t g = (c >> 5) & 0x3F;
+    uint16_t b = c & 0x1F;
+    return (uint16_t)((b << 11) | (g << 5) | r);
+}
+
+/* Writes the software tezos_fb_t buffer to the fbdev character device via
+   write(), not mmap(). Every test pattern during bring-up was pushed
+   this exact way and landed correctly; mmap()+deferred-io timing on this
+   specific staging driver was never validated, so this doesn't lean on
+   it. Dirty-rect handling mirrors the original DRM backend's bounding-
+   box reduction (same bandwidth-mitigation intent, same v1 simplification
+   of unioning rects rather than writing each separately). */
+static void fbdev_flip(fbdev_dev_t *d, const tezos_fb_t *fb, const tezos_dirty_t *dirty) {
     int y0 = 0, y1 = fb->height, x0 = 0, x1 = fb->width;
     if (dirty && !dirty->full_redraw && dirty->count > 0) {
-        /* Simplification for v1: union of all dirty rects into one
-           bounding box rather than copying each rect separately —
-           correct, just not maximally bandwidth-optimal yet. Revisit
-           if SPI throughput turns out to need per-rect precision. */
         y0 = fb->height; y1 = 0; x0 = fb->width; x1 = 0;
         for (int i = 0; i < dirty->count; i++) {
             tezos_rect_t r = dirty->rects[i];
@@ -205,28 +170,38 @@ static void drm_flip(drm_dev_t *d, const tezos_fb_t *fb, const tezos_dirty_t *di
         if (x1 > fb->width) x1 = fb->width;
         if (y1 > fb->height) y1 = fb->height;
     }
+
+    int row_w = x1 - x0;
+    if (row_w <= 0) return;
+
     for (int row = y0; row < y1; row++) {
-        memcpy(d->map + row * d->pitch + x0 * 2,
-               fb->pixels + row * fb->width + x0,
-               (size_t)(x1 - x0) * 2);
+        /* X is mirrored on this panel (confirmed on real hardware: boot
+           splash and idle grid both rendered correctly except flipped
+           left-right -- text readable only in a mirror, selected-icon
+           position otherwise correct). Same approach as the R/B swap
+           above: guaranteed in software here, not left to a devicetree
+           flag. Read from the FULL row (not the x0-offset src pointer),
+           indexed by each device column's mirrored logical column, so
+           this is correct for partial dirty-rect writes too, not just
+           full-frame ones. */
+        const uint16_t *full_row = fb->pixels + (size_t)row * fb->width;
+        for (int i = 0; i < row_w; i++) {
+            int logical_x = fb->width - 1 - x0 - i;
+            d->row_buf[i] = rb_swap16(full_row[logical_x]);
+        }
+
+        off_t offset = (off_t)row * d->line_length + (off_t)x0 * 2;
+        ssize_t want = (ssize_t)row_w * 2;
+        ssize_t got = pwrite(d->fd, d->row_buf, (size_t)want, offset);
+        if (got != want) {
+            fprintf(stderr, "fbdev_flip: short/failed pwrite at row %d: %s\n", row, strerror(errno));
+            return;
+        }
     }
-    /* Ask the driver to only push the changed region over SPI if it
-       supports it — cheap to try, ignored if unsupported. This is the
-       actual mitigation for the SPI-bandwidth constraint flagged in
-       hardware-roadmap-build-notes.md. */
-    drmModeClip clip = { .x1 = (unsigned short)x0, .y1 = (unsigned short)y0,
-                          .x2 = (unsigned short)x1, .y2 = (unsigned short)y1 };
-    drmModeDirtyFB(d->fd, d->fb_id, &clip, 1);
 }
 
-static void drm_cleanup(drm_dev_t *d) {
-    if (d->saved_crtc) {
-        drmModeSetCrtc(d->fd, d->saved_crtc->crtc_id, d->saved_crtc->buffer_id,
-                       d->saved_crtc->x, d->saved_crtc->y, &d->conn->connector_id, 1, &d->saved_crtc->mode);
-        drmModeFreeCrtc(d->saved_crtc);
-    }
-    if (d->map) munmap(d->map, d->size);
-    if (d->conn) drmModeFreeConnector(d->conn);
+static void fbdev_cleanup(fbdev_dev_t *d) {
+    free(d->row_buf);
     if (d->fd >= 0) close(d->fd);
 }
 
@@ -370,23 +345,23 @@ static tezos_screen_t g_idle_screen = {
     .on_resume = NULL, .app_state = &g_idle_state, .debug_name = "idle",
 };
 
-/* Presentation state, set once in main() after DRM/canvas setup. File-
+/* Presentation state, set once in main() after fbdev/canvas setup. File-
    scope (matching g_core and this file's other globals) rather than a
    nested function -- nested functions are a GCC extension, not
    standard C11, and this project builds with plain -std=c11 elsewhere
    without relying on that extension. */
-static drm_dev_t *g_present_drm;
+static fbdev_dev_t *g_present_fbdev;
 static tezos_fb_t *g_present_logical_fb;
 static tezos_fb_t *g_present_letterbox_staging;
 static bool g_present_needs_letterbox;
 
 static void present_frame(void) {
     if (!g_present_needs_letterbox) {
-        drm_flip(g_present_drm, g_present_logical_fb, &g_core.dirty); /* real panel: fast dirty-rect path, unchanged */
+        fbdev_flip(g_present_fbdev, g_present_logical_fb, &g_core.dirty); /* real panel: fast dirty-rect path, unchanged */
         return;
     }
     tezos_fb_blit_letterboxed(g_present_letterbox_staging, g_present_logical_fb, TEZOS_BG);
-    drm_flip(g_present_drm, g_present_letterbox_staging, NULL); /* NULL dirty = full-frame push, correct and cheap enough over HDMI */
+    fbdev_flip(g_present_fbdev, g_present_letterbox_staging, NULL); /* NULL dirty = full-frame push, correct and cheap enough over HDMI */
 }
 
 int main(void) {
@@ -406,13 +381,17 @@ int main(void) {
     /* real grid needs no list init -- g_idle_state.selected defaults to
        0 (static zero-init), matching "top-left app selected on boot" */
 
-    /* --- DRM display --- */
-    drm_dev_t drm;
-    if (drm_init(&drm, "/dev/dri/card0") < 0) {
-        fprintf(stderr, "DRM init failed — see notes at top of this file. Falling back is not implemented; fix the panel overlay first.\n");
+    /* --- fbdev display --- */
+    fbdev_dev_t fbdev;
+    if (fbdev_init(&fbdev, "/dev/fb1") < 0) {
+        fprintf(stderr, "fbdev init failed — see notes at top of this file. Falling back is not implemented; fix the panel overlay first.\n");
         return 1;
     }
-    tezos_fb_t physical_fb = { .pixels = (uint16_t *)drm.map, .width = drm.mode.hdisplay, .height = drm.mode.vdisplay };
+    tezos_fb_t physical_fb = { .pixels = NULL, .width = fbdev.width, .height = fbdev.height };
+    /* .pixels intentionally NULL: unlike the old DRM dumb-buffer backend,
+       fbdev_flip() doesn't write through a persistent mapped pointer — it
+       pwrite()s each row via its own scratch buffer (fbdev.row_buf). This
+       struct's width/height are only used below for the letterbox check. */
 
     /* tezos_core always renders into this FIXED logical canvas, matching
        the real target panel's actual resolution -- not whatever the
@@ -430,7 +409,7 @@ int main(void) {
 
     /* Real target hardware: physical resolution == logical resolution
        exactly, so the existing dirty-rect SPI-bandwidth optimization in
-       drm_flip() applies completely unchanged -- this new layer costs
+       fbdev_flip() applies completely unchanged -- this new layer costs
        nothing on the actual device. Anything else (dev/testing via
        HDMI, or a future different-sized panel) needs the letterboxed
        full-frame path instead -- dirty rects computed in LOGICAL
@@ -446,7 +425,7 @@ int main(void) {
                         "using the letterboxed full-frame path, not the SPI dirty-rect fast path.\n",
                 physical_fb.width, physical_fb.height, logical_fb->width, logical_fb->height);
     }
-    g_present_drm = &drm;
+    g_present_fbdev = &fbdev;
     g_present_logical_fb = logical_fb;
     g_present_letterbox_staging = letterbox_staging;
     g_present_needs_letterbox = needs_letterbox;
@@ -531,6 +510,6 @@ int main(void) {
         }
     }
 
-    drm_cleanup(&drm); /* unreachable in the loop above; here for completeness if a future exit path is added */
+    fbdev_cleanup(&fbdev); /* unreachable in the loop above; here for completeness if a future exit path is added */
     return 0;
 }

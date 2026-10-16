@@ -42,6 +42,33 @@ cause** — `rotate=0` is locked in, R/B channel swap is done in software
 whose physical corner is a mounting/enclosure decision, not a display-driver
 question. Touch (XPT2046) is not wired into the current overlay at all yet.
 
+**Real update (2026-10-15, continued):** `src/shim-linux/linux_shim.c` was
+rewritten against fbdev instead of libdrm — the shim as originally written
+could never have worked, since the working overlay (`fbtft,ili9481`)
+creates a plain `/dev/fb1`, not a DRM device. Full writeup:
+`docs/build-notes/linux-shim-fbdev-rewrite-build-notes.md`. Everything
+above the display backend (logical/physical canvas, letterboxing,
+dirty-rect, boot splash hand-off) needed no changes. Compiles and links
+clean against the real `core`/`chain`/`apps` source tree for the first
+time ever for this file; runs and fails correctly on a host with no real
+panel.
+
+**Real update (2026-10-15, continued) — ran on actual Pi hardware, and it
+worked.** Boot splash rendered on real hardware for the first time this
+project has ever had real hardware access. Found one real bug immediately
+— everything mirrored left-right — fixed the same way as the color-order
+issue (guaranteed in software in `fbdev_flip()`, not trusted to a
+devicetree flag). Went further: built a synthetic `/dev/uinput` keyboard
+(`tools/uinput-keypad/`, since no real keypad is wired yet — M2) and drove
+real navigation — idle grid → Wallet (real balance displayed, exercising
+the mock signer + HTTP + TZKT read path, not just rendering) → back to
+idle → Settings (dense text list, a harder render test than icons, held
+up correctly). 11+ minutes stable, no crashes, idle CPU near zero. Full
+writeup: `docs/build-notes/linux-shim-fbdev-rewrite-build-notes.md`. M1's
+core exit criterion (stable image on real hardware) is now substantively
+met; remaining gaps are M2 (real keypad/touch hardware, not synthetic)
+and a longer soak test.
+
 ## M2 — Input working
 - TCA8418 keypad decoder wired over I2C: numeric matrix + 2 softkeys +
   dedicated Up/Down buttons, all through one interrupt line.

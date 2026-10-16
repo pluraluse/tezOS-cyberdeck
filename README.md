@@ -29,7 +29,7 @@ Operation forging and signing (`src/chain/`) are genuinely implemented
 and verified byte-for-byte against Taquito's own reference test vectors,
 and Wallet's home + Send-confirm screens (`src/apps/wallet/`) exercise
 that pipeline for real (see `docs/build-notes/wallet-app-build-notes.md`).
-Real DRM/evdev wiring to actual Pi Zero 2 W hardware, a network layer,
+Real display/evdev wiring to actual Pi Zero 2 W hardware, a network layer,
 popups/alerts design, and icon assets are still open — see `ROADMAP.md`.
 
 ## Mission
@@ -152,12 +152,17 @@ tezos-cyberdeck/
 │   │                                 verified — real end-to-end push/pop navigation
 │   │                                 proven working (see
 │   │                                 docs/architecture/CORE-ARCHITECTURE.md).
-│   │                                 Not yet wired to real DRM/evdev hardware.
-│   ├── shim-linux/            — linux_shim.c: real DRM/KMS + evdev platform shim.
-│   │                             Compiles and links clean against real libdrm headers
-│   │                             (verified in dev sandbox); fails gracefully with no
-│   │                             real /dev/dri device (expected outside real Pi
-│   │                             hardware). Not yet runtime-verified — see ROADMAP.md M1.
+│   │                                 Not yet wired to real display/evdev hardware.
+│   ├── shim-linux/            — linux_shim.c: fbdev + evdev platform shim (rewritten
+│   │                             from an earlier libdrm version after real hardware
+│   │                             bring-up found the working panel overlay creates a
+│   │                             plain fbdev device, not a DRM one — see
+│   │                             docs/build-notes/linux-shim-fbdev-rewrite-build-notes.md).
+│   │                             Compiles and links clean against the full real
+│   │                             core/chain/apps source tree (verified in dev
+│   │                             sandbox); fails gracefully with no real /dev/fb1
+│   │                             device (expected outside real Pi hardware). Not yet
+│   │                             run on actual Pi hardware — see ROADMAP.md M1.
 │   ├── chain/                     — tezos_base58, tezos_forge, tezos_signer: real operation
 │   │                                 forging/signing, verified byte-for-byte against Taquito
 │   │                                 reference vectors. tezos_micheline: Michelson entrypoint-

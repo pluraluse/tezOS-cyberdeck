@@ -1,8 +1,15 @@
 #!/bin/bash
 # Builds src/shim-linux and installs it as a boot-to-kiosk systemd
 # service. Run this ON the Pi Zero 2 W, not in a dev environment —
-# it links against real libdrm and expects real /dev/dri, /dev/input
-# devices to exist.
+# it expects a real /dev/fb1 (the confirmed bring-up config:
+# dtoverlay=fbtft,ili9481,... — see docs/build-notes/
+# display-bringup-build-notes.md) and real /dev/input devices to exist.
+#
+# No longer links against libdrm. linux_shim.c was rewritten against
+# fbdev after real hardware bring-up found the piscreen overlay never
+# worked and the overlay that does work (fbtft,ili9481) uses the legacy
+# fbtft staging driver, which exposes a plain fbdev device, not a DRM
+# one — see the file-top comment in linux_shim.c.
 #
 # NOTE: this script was stale for a long stretch of development --
 # it only built the original core/ files and would have failed to
@@ -13,14 +20,14 @@
 # piece does and how it was checked).
 set -e
 
-if [ ! -e /dev/dri/card0 ] && [ ! -e /dev/dri/card1 ]; then
-  echo "No /dev/dri/cardN found. Fix the display overlay first — see"
+if [ ! -e /dev/fb1 ]; then
+  echo "No /dev/fb1 found. Fix the display overlay first — see"
   echo "ROADMAP.md M1 and the config.txt steps in the project README."
   exit 1
 fi
 
 sudo apt update
-sudo apt install -y build-essential libdrm-dev libsodium-dev \
+sudo apt install -y build-essential libsodium-dev \
     libcurl4-openssl-dev libcjson-dev libqrencode-dev libzbar-dev pkg-config
 
 cd "$(dirname "$0")/../src/shim-linux"
@@ -51,7 +58,7 @@ gcc -O2 -Wall -Wextra -std=c11 -o tezos_shim linux_shim.c \
     ../chain/*.c \
     $APP_SOURCES \
     -I../core -I../chain -I../apps/wallet -I../apps/settings \
-    $(pkg-config --cflags --libs libdrm) $(pkg-config --cflags --libs libsodium) -lcurl -lcjson -lqrencode -lzbar -lm
+    $(pkg-config --cflags --libs libsodium) -lcurl -lcjson -lqrencode -lzbar -lm
 
 sudo mkdir -p /opt/tezos
 sudo cp tezos_shim /opt/tezos/
